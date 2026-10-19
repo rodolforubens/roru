@@ -690,6 +690,8 @@ table.rs-table .code { padding-left: 12px; }
 .diff-empty p, .placeholder { margin: auto; color: var(--text-3); text-align: center; padding: 20px; }
 
 /* ---------- welcome ---------- */
+/* the start page is centered, and scrolls from its top when it is taller than the window */
+.welcome-scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; }
 .welcome { margin: auto; width: min(520px, 90%); text-align: center; padding: 40px 0; }
 .welcome .logo { width: 72px; height: 72px; margin: 0 auto 18px; }
 .welcome h1 { font-size: 24px; margin: 0 0 6px; font-weight: 650; }
@@ -699,6 +701,7 @@ table.rs-table .code { padding-left: 12px; }
 .recent h4 { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: .06em; margin: 0 0 6px 10px; }
 .recent-item { display: flex; flex-direction: column; padding: 7px 10px; border-radius: 8px; cursor: pointer; }
 .recent-item:hover { background: var(--hover); }
+.recent-list { max-height: 300px; overflow-y: auto; }
 .recent-item .p { font-size: 11.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .welcome kbd, .sb-hint kbd { font-family: var(--mono); font-size: 11px; background: var(--bg-3); border-radius: 4px; padding: 1px 5px; }
 .welcome .tips { margin-top: 28px; color: var(--text-3); font-size: 12px; }

@@ -1767,7 +1767,8 @@ function renderWelcome() {
   if (!desktop && !currentUser()) return renderSignIn();
   const recent = desktop ? store('recent') || [] : [];
   const projects = P.listProjects(), archived = P.archivedProjects();
-  $('#main').innerHTML = `<div class="welcome">${LOGO}
+  // (the page scrolls when it is taller than the window, and the recent list in its own box)
+  $('#main').innerHTML = `<div class="welcome-scroll"><div class="welcome">${LOGO}
     <h1>Roru Dashboard</h1>
     <p>${desktop ? 'Projects, notes and Git in one place.' : 'Your projects and notes. Git and the folders are in the desktop app.'}</p>
     <div class="welcome-acts">${desktop ? '<button class="btn primary" id="w-open">Open repository or folder…</button>' : ''}<button class="btn ${desktop ? '' : 'primary'}" id="w-project">New project…</button></div>
@@ -1777,9 +1778,9 @@ function renderWelcome() {
     ${archived.length ? `<div class="recent archived"><h4>Archived projects</h4>${archived.map(p => `<div class="recent-item proj-item arch-item" data-archived="${esc(p.id)}">
       <span class="proj-badge" style="--pc: ${p.color}">${esc(P.initials(p.name))}</span><span class="proj-text"><b>${esc(p.name)}</b><span class="p">${plural(p.folders.length, 'folder')} · archived ${esc(fmtRelative(p.archived / 1000))}</span></span>
       <span class="spacer"></span><button class="btn-sm" data-arch="restore">Restore</button><button class="btn-sm" data-arch="delete">Delete…</button></div>`).join('')}</div>` : ''}
-    ${recent.length ? `<div class="recent"><h4>Recent</h4>${recent.map(p => `<div class="recent-item" data-path="${esc(p)}"><b>${esc(folderName(p))}</b><span class="p">${esc(p)}</span></div>`).join('')}</div>` : ''}
+    ${recent.length ? `<div class="recent"><h4>Recent</h4><div class="recent-list">${recent.map(p => `<div class="recent-item" data-path="${esc(p)}"><b>${esc(folderName(p))}</b><span class="p">${esc(p)}</span></div>`).join('')}</div></div>` : ''}
     <div class="tips"><kbd>Ctrl</kbd> <kbd>+</kbd> / <kbd>−</kbd> zoom · <kbd>Ctrl</kbd> <kbd>0</kbd> reset · <kbd>Ctrl</kbd> + mouse wheel</div>
-  </div>`;
+  </div></div>`;
   if (desktop) $('#w-open').onclick = openRepoDialog;
   $('#w-project').onclick = newProject;
   renderNotesPanel($('.welcome-notes'), 'home');
