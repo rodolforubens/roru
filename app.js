@@ -1779,7 +1779,6 @@ function renderWelcome() {
       <span class="proj-badge" style="--pc: ${p.color}">${esc(P.initials(p.name))}</span><span class="proj-text"><b>${esc(p.name)}</b><span class="p">${plural(p.folders.length, 'folder')} · archived ${esc(fmtRelative(p.archived / 1000))}</span></span>
       <span class="spacer"></span><button class="btn-sm" data-arch="restore">Restore</button><button class="btn-sm" data-arch="delete">Delete…</button></div>`).join('')}</div>` : ''}
     ${recent.length ? `<div class="recent"><h4>Recent</h4><div class="recent-list">${recent.map(p => `<div class="recent-item" data-path="${esc(p)}"><b>${esc(folderName(p))}</b><span class="p">${esc(p)}</span></div>`).join('')}</div></div>` : ''}
-    <div class="tips"><kbd>Ctrl</kbd> <kbd>+</kbd> / <kbd>−</kbd> zoom · <kbd>Ctrl</kbd> <kbd>0</kbd> reset · <kbd>Ctrl</kbd> + mouse wheel</div>
   </div></div>`;
   if (desktop) $('#w-open').onclick = openRepoDialog;
   $('#w-project').onclick = newProject;
