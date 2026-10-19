@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Roru Dashboard</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='112' fill='%23272c38'/%3E%3Cpath d='M176 128v256M176 304c0-64 160-48 160-112' fill='none' stroke='%237aa2f7' stroke-width='36' stroke-linecap='round'/%3E%3Ccircle cx='176' cy='128' r='40' fill='%239ece6a'/%3E%3Ccircle cx='176' cy='384' r='40' fill='%239ece6a'/%3E%3Ccircle cx='336' cy='176' r='40' fill='%23f7768e'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <nav id="rail"></nav>
+  <div id="app">
+    <nav id="tabs"></nav>
+    <header id="toolbar">
+      <button id="repo-btn" class="repo-btn" title="Switch repository (Ctrl+O)">
+        <span class="repo-glyph"></span>
+        <span class="repo-text"><span id="repo-name">Open repository</span><span id="repo-branch"></span></span>
+        <span class="repo-chev"></span>
+      </button>
+      <div class="tb-sep"></div>
+      <div class="mode-toggle" id="mode-toggle" role="tablist">
+        <button data-mode="git" role="tab">Git</button>
+        <button data-mode="explorer" role="tab" title="Files — browse the folder (Ctrl+E)">Files</button>
+      </div>
+      <div class="tb-sep"></div>
+      <div class="tb-group" id="repo-actions">
+        <button class="tb git-only" data-action="fetch" title="Fetch — fetch from all remotes">Fetch</button>
+        <button class="tb git-only" data-action="pull" title="Pull — fetch and integrate the upstream">Pull</button>
+        <button class="tb git-only" data-action="push" title="Push — push the current branch">Push</button>
+        <button class="tb" data-action="terminal" title="Open a terminal in the folder">Terminal</button>
+        <div class="tb-sep git-only"></div>
+        <button class="tb git-only" data-action="branch" title="Create a branch from HEAD">Branch</button>
+        <button class="tb git-only" data-action="stash" title="Stash changes">Stash</button>
+        <button class="tb git-only" data-action="pop" title="Apply and drop the latest stash">Pop</button>
+      </div>
+      <div class="spacer"></div>
+      <div id="busy" hidden><span class="spinner"></span><span id="busy-text"></span></div>
+      <button class="tb icon-only" data-action="refresh" title="Refresh (F5)"></button>
+    </header>
+    <div id="op-banner" hidden></div>
+
+    <div id="workspace">
+      <aside id="sidebar">
+        <div class="git-side">
+          <div class="sb-filter"><label class="filter-box"><span class="filter-icon"></span><input type="search" id="branch-filter" placeholder="Filter branches" spellcheck="false"></label></div>
+          <div id="sidebar-body"></div>
+        </div>
+        <div class="ex-side">
+          <div class="ex-search"><label class="filter-box"><input type="search" id="ex-search" placeholder="Search files  (Ctrl+F)" spellcheck="false"></label><button class="view-toggle" id="ex-grep"></button></div>
+          <div id="ex-tree" tabindex="0"></div>
+        </div>
+        <div class="note-side"><div id="note-tree"></div></div>
+      </aside>
+      <div class="splitter v" id="split-sidebar"></div>
+      <main id="main"></main>
+      <div id="peek" hidden></div>
+    </div>
+
+    <footer id="statusbar">
+      <span id="sb-left"></span>
+      <span class="spacer"></span>
+      <span class="sb-hint">Ctrl + / − to zoom</span>
+      <button id="sb-zoom" title="Reset zoom (Ctrl+0)">100%</button>
+    </footer>
+  </div>
+
+  <div id="zoom-toast" role="status">
+    <button data-z="out" title="Zoom out (Ctrl −)">−</button>
+    <span class="zt-value">100%</span>
+    <button data-z="in" title="Zoom in (Ctrl +)">+</button>
+    <button data-z="reset" class="zt-reset" title="Ctrl 0">Reset</button>
+  </div>
+
+  <div id="toasts"></div>
+  <div id="menu" hidden></div>
+  <div id="modal-root"></div>
+</body>
+</html>
