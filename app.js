@@ -10,7 +10,7 @@ import * as P from './projects.js';
 import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js';
 import * as S from './notes-store.js';
 import { desktop, invoke } from './platform.js';
-import { configured, initAccount, onAccount, currentUser, signIn, signOut, userName, userAvatar } from './account.js';
+import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js';
 import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -812,7 +812,7 @@ async function restoreSpaces() {
     const last = store('lastRepo');
     spaces = { home: { list: store('tabs') || (last ? [last] : []), active: store('activeTab') ?? null } };
   }
-  for (const id of Object.keys(spaces)) if (id !== 'home' && !P.getProject(id)) delete spaces[id];
+  // (the tabs of projects not shown now are kept: signed in, the projects of this computer aren't shown)
   tabs.spaces = spaces;
   const space = store('space');
   await switchSpace(P.getProject(space) ? space : 'home');
@@ -906,18 +906,88 @@ function accountButton() {
     <span class="sync-dot ${sync || ''}"></span></button>`;
 }
 
+// Projects of this computer (kept for when signed out) that the account doesn't have.
+const localOnly = () => P.localProjects().filter(p => !P.getProject(p.id));
+
 function accountMenu(x, y) {
   const u = currentUser();
   const note = label => ({ label, disabled: true, run: () => {} });
+  const local = desktop && u ? localOnly() : [];
+  const files = [
+    { label: u ? 'Export the projects of the account…' : 'Export projects…', run: () => exportProjects(P.listProjects()) },
+    ...(desktop && u && P.localProjects().length ? [{ label: 'Export the projects of this computer…', run: () => exportProjects(P.localProjects()) }] : []),
+    { label: u ? 'Import projects to the account from a file…' : 'Import projects from a file…', run: importProjectsFile },
+  ];
   showMenu(x, y, u ? [
     note(`Signed in as ${u.email || userName(u)}`),
     note(SYNC[P.syncStatus()] || ''),
     '-',
+    ...(local.length ? [{ label: `Copy ${plural(local.length, 'project')} of this computer to the account…`, run: copyLocalProjects }] : []),
+    ...files,
+    '-',
     { label: 'Sign out', run: () => signOut().catch(e => toast('Could not sign out', 'error', String(e.message || e))) },
   ] : [
     { label: 'Sign in with Google…', run: startSignIn },
-    note(desktop ? 'Your projects go to your account, also on the web' : 'Your projects, on the web and in the desktop app'),
+    note(desktop ? 'Your projects in your account, also on the web' : 'Your projects, on the web and in the desktop app'),
+    '-',
+    ...files,
   ]);
+}
+
+// The projects of this computer are copied to the account (they also stay here, for when signed out).
+async function copyLocalProjects() {
+  const local = localOnly();
+  if (!local.length) return;
+  const names = local.map(p => `• ${p.name}`).join('\n');
+  if (!(await confirmBox('Copy to the account', `Copy these projects of this computer to your account?\n\n${names}\n\nThey stay on this computer too.`, 'Copy', false))) return;
+  added(P.importProjects(local), local.length);
+}
+
+function added(n, total) {
+  const skipped = total - n;
+  if (n) toast(`Added ${plural(n, 'project')}`, 'ok', skipped ? `${plural(skipped, 'project was', 'projects were')} already there` : '');
+  else toast(total ? 'These projects are already there' : 'There are no projects in this file');
+  projectsChanged();
+}
+
+// A file with the projects (their folders, links and dashboards), to import in the account or elsewhere.
+async function exportProjects(list) {
+  const data = JSON.stringify(P.projectsFile(list), null, 2);
+  const name = `roru-projects-${new Date().toISOString().slice(0, 10)}.json`;
+  if (!desktop) {
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([data], { type: 'application/json' })), download: name });
+    a.click();
+    return setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+  try {
+    const path = await tauri.dialog.save({ title: 'Export projects', defaultPath: name, filters: [{ name: 'Roru Dashboard projects', extensions: ['json'] }] });
+    if (!path) return;
+    await invoke('write_text', { path, content: data });
+    toast(`Exported ${plural(list.length, 'project')}`, 'ok', path);
+  } catch (e) {
+    toast('Could not export the projects', 'error', String(e.message || e));
+  }
+}
+
+async function importProjectsFile() {
+  let text;
+  try {
+    if (desktop) {
+      const path = await tauri.dialog.open({ title: 'Import projects', multiple: false, directory: false, filters: [{ name: 'Roru Dashboard projects', extensions: ['json'] }] });
+      if (!path) return;
+      text = new TextDecoder().decode(await invoke('read_bytes', { path }));
+    } else {
+      const input = Object.assign(document.createElement('input'), { type: 'file', accept: '.json,application/json' });
+      const file = await new Promise(done => { input.onchange = () => done(input.files[0]); input.click(); });
+      if (!file) return;
+      text = await file.text();
+    }
+  } catch (e) {
+    return toast('Could not read the file', 'error', String(e.message || e));
+  }
+  const list = P.readProjectsFile(text);
+  if (!list) return toast('This is not a file of exported projects', 'error');
+  added(P.importProjects(list), list.length);
 }
 
 async function startSignIn() {
@@ -935,18 +1005,25 @@ function paintAccount() {
   if (el) el.outerHTML = accountButton();
 }
 
-// Signed in or out: the projects shown are the account's, or the ones kept on this device.
+// The web page is only for signed-in users: signed out, it only shows how to sign in.
+const applyGate = () => document.documentElement.classList.toggle('signed-out', !desktop && !currentUser());
+
+// Signed in or out: the projects shown are the account's, or the ones kept on this device (which
+// signing in never changes: they can be copied to the account from the account menu).
 function accountChanged(user) {
-  const moved = P.useAccount(user);
-  if (user) toast(`Signed in as ${user.email || userName(user)}`, 'ok');
-  if (moved) toast(`${plural(moved, 'project')} from this computer ${moved === 1 ? 'was' : 'were'} added to your account`, 'ok');
+  applyGate();
+  P.useAccount(user);
+  if (!user) return;
+  toast(`Signed in as ${user.email || userName(user)}`, 'ok',
+    desktop && P.localProjects().length ? 'The projects of this computer stay here: to copy them to your account, open the account menu (bottom left).' : '');
 }
 
 // The projects changed elsewhere (or the account did): the ones deleted take their notes to Home,
 // like when deleting them here, and the current space goes home if its project is gone.
 async function projectsChangedElsewhere({ removed }) {
   for (const id of removed) {
-    if (desktop) S.moveSpace(id, 'home');
+    // (unless this computer still has it, signed out: then its notes stay with it)
+    if (desktop && !P.localProjects().some(p => p.id === id)) S.moveSpace(id, 'home');
     if (id !== tabs.space && tabs.spaces[id]) { forgetTabs(tabs.spaces[id].list); delete tabs.spaces[id]; }
   }
   if (tabs.space !== 'home' && !currentProject()) {
@@ -3103,6 +3180,8 @@ onAccount(accountChanged);
 
 (async () => {
   P.useAccount(await initAccount().catch(e => { toast('Could not reach your account', 'error', String(e.message || e)); return null; }));
+  applyGate();
+  if (signInFailure()) toast('Could not sign in — try again', 'error', signInFailure());
   if (desktop) await initNotesUi({
     space: () => tabs.space,
     spaceName: id => P.getProject(id)?.name || 'Home',

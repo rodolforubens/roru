@@ -2,14 +2,18 @@
 // (see app.js) and a dashboard (see dashboard.js). This module owns how projects are stored, so the
 // UI doesn't depend on it: signed out, they are kept on this device; signed in (see account.js),
 // they are kept in the account, where every change is written right away and the changes made
-// elsewhere (the web page, another computer) come in live (see "Account" below).
+// elsewhere (the web page, another computer) come in live (see "Account" below). The ones kept on
+// this device are never changed by the account: they go there only as copies (importProjects).
 // Folders are local paths like "C:/Projects/api" ({ path }), the same keys the tabs use.
 import { store } from './util.js';
 import { db } from './account.js';
 
 export const COLORS = ['#7aa2f7', '#9ece6a', '#f7768e', '#e0af68', '#bb9af7', '#2ac3de', '#ff9e64', '#73daca'];
 
-let projects = (store('projects') || []).filter(p => p?.id);
+// The projects kept on this device (shown signed out).
+export const localProjects = () => (store('projects') || []).filter(p => p?.id);
+
+let projects = localProjects();
 const save = () => (account ? write() : store('projects', projects));
 
 const newId = () => crypto.randomUUID?.() ?? Date.now().toString(36) + Math.random().toString(36).slice(2);
@@ -156,6 +160,38 @@ export function setSectionsLocked(id, locked) {
 }
 
 // =====================================================================
+// Export and import (a file with the projects, or the ones kept on this device)
+// =====================================================================
+
+export const projectsFile = (list = projects) => ({
+  app: 'roru-dashboard', kind: 'projects', version: 1, exported: new Date().toISOString(), projects: JSON.parse(JSON.stringify(list)),
+});
+
+// The projects in a file made by projectsFile (or a plain list of them); null when it isn't one.
+export function readProjectsFile(text) {
+  try {
+    const data = JSON.parse(text);
+    const list = Array.isArray(data) ? data : data?.projects;
+    return Array.isArray(list) ? list.filter(p => p?.id && typeof p.name === 'string') : null;
+  } catch {
+    return null;
+  }
+}
+
+// Adds copies of `list` to the projects shown (the account's when signed in), with the same ids, so
+// their notes and tabs on this computer follow them; the ones already there are left as they are.
+// Nothing is removed from where they came from. Returns how many were added.
+export function importProjects(list) {
+  const fresh = list.filter(p => !getProject(p.id));
+  projects.push(...fresh.map(p => {
+    const c = JSON.parse(JSON.stringify(p));
+    return { ...c, color: c.color || nextColor(), folders: Array.isArray(c.folders) ? c.folders.filter(f => f?.path) : [], links: Array.isArray(c.links) ? c.links.filter(l => l?.id && l.url) : [] };
+  }));
+  if (fresh.length) save();
+  return fresh.length;
+}
+
+// =====================================================================
 // Account: the projects kept in the user's account (Supabase)
 // =====================================================================
 //
@@ -174,7 +210,6 @@ const TABLES = ['projects', 'links'];
 let account = null;          // the signed-in user whose projects these are, or null
 let rows = emptyRows();
 let outbox = new Map();      // "table:id" -> { table, id, row } (row null: deleted)
-let incoming = [];           // projects kept on this device before signing in, going to the account
 let channel = null;
 let status = null;           // null (signed out), 'syncing', 'synced' or 'offline'
 let flushing = null, retry = null, delay = 0;
@@ -242,7 +277,6 @@ function build() {
     for (const k of Object.keys(p)) delete p[k];
     return Object.assign(p, { name: '', color: COLORS[0], folders: [] }, clone(r.data), { id: r.id, links: linksOf.get(r.id) || [] });
   });
-  projects.push(...incoming.filter(p => !rows.projects.has(p.id)));
 }
 
 const fromDb = (table, r) => ({
@@ -267,7 +301,6 @@ function write() {
     for (const id of rows[t].keys()) if (!next[t].has(id)) outbox.set(`${t}:${id}`, { table: t, id, row: null });
   }
   rows = next;
-  if (incoming.length) { incoming = []; store('projects', []); } // they are in the outbox now
   keep();
   flush();
 }
@@ -365,36 +398,32 @@ async function resync() {
   const removed = [...rows.projects.keys()].filter(id => !next.projects.has(id));
   const same = TABLES.every(t => rows[t].size === next[t].size && [...next[t]].every(([id, r]) => canon(r) === canon(rows[t].get(id))));
   rows = next;
-  const moving = incoming.length > 0;
-  if (!same || moving) build();
-  if (moving) write(); // the projects of this device go after the account's
+  if (!same) build();
   keep();
-  if (!same || moving) tell(removed);
+  if (!same) tell(removed);
   if (outbox.size) flush();
   else setStatus('synced');
 }
 
 // Shows the projects of the account of `user` (signed in), or the ones kept on this device (null).
-// The first time, the projects kept on this device go to the account; returns how many.
 export function useAccount(user) {
   if (channel) { db.removeChannel(channel); channel = null; }
   clearTimeout(retry);
   account = user && db ? user : null;
   outbox = new Map();
   rows = emptyRows();
-  incoming = [];
   echoes.clear();
   delay = 0;
   if (!account) {
-    projects = (store('projects') || []).filter(p => p?.id);
+    projects = localProjects();
     setStatus(null);
     tell();
-    return 0;
+    return;
   }
   const cache = store(`account.${account.id}`) || {};
   for (const t of TABLES) (cache.rows?.[t] || []).forEach(r => rows[t].set(r.id, r));
   (cache.outbox || []).forEach(o => outbox.set(`${o.table}:${o.id}`, o));
-  incoming = (store('projects') || []).filter(p => p?.id);
+  projects = []; // (the objects of this device's projects are not reused for the account's)
   build();
   tell();
   setStatus('syncing');
@@ -406,7 +435,6 @@ export function useAccount(user) {
       if (s === 'SUBSCRIBED') resync();
       else if (s === 'CHANNEL_ERROR' || s === 'TIMED_OUT') setStatus('offline');
     });
-  return incoming.length;
 }
 
 addEventListener('online', () => { if (account) { delay = 0; flush(); resync(); } });

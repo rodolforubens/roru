@@ -20,13 +20,22 @@ export const currentUser = () => user;
 // `fn(user)` runs when the user signs in or out (user is null when signed out).
 export const onAccount = fn => listeners.add(fn);
 
+let failure = null;
+
+// Why the sign-in the web page just came back from failed (e.g. it took too long), or null.
+export const signInFailure = () => failure;
+
 // Reads the session kept from the last time (on the web, also the one a sign-in just came back with).
 export async function initAccount() {
   if (!db) return null;
   const { data } = await db.auth.getSession();
   user = data.session?.user ?? null;
-  // the sign-in came back with a code in the address: it's been used, so it goes away
-  if (!desktop && new URLSearchParams(location.search).has('code')) history.replaceState(null, '', location.pathname);
+  // the sign-in came back with a code (or why it failed) in the address: it's been used, so it goes away
+  const back = desktop ? null : new URLSearchParams(location.search);
+  if (back?.has('code') || back?.has('error')) {
+    failure = back.get('error') ? back.get('error_description') || back.get('error') : null;
+    history.replaceState(null, '', location.pathname);
+  }
   db.auth.onAuthStateChange((_event, session) => {
     const next = session?.user ?? null;
     if (next?.id === user?.id) { user = next; return; } // the session was only refreshed

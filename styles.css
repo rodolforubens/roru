@@ -160,6 +160,9 @@ html.web .tab-new, html.web #mode-toggle, html.web .mode-toggle + .tb-sep, html.
 html.web .dash-actions [data-act="add"], html.web .dash-actions [data-act$="-all"], html.web .dash-actions [data-act="refresh"],
 html.web .dash-block[data-sec="notes"] { display: none; }
 html.web .dash-row { cursor: default; }
+/* signed out, the web page is only the sign-in */
+html.web.signed-out #rail, html.web.signed-out #tabs, html.web.signed-out #toolbar,
+html.web.signed-out #op-banner, html.web.signed-out #statusbar { display: none !important; }
 
 /* ---------- repository tabs ---------- */
 #tabs {
