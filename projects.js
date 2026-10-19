@@ -5,9 +5,9 @@
 // elsewhere (the web page, another computer) come in live (see "Account" below). The ones kept on
 // this device are never changed by the account: they go there only as copies (importProjects).
 // Folders are local paths like "C:/Projects/api" ({ path }), the same keys the tabs use.
-import { store } from './util.js';
-import { db } from './account.js';
-import { createMirror, clone } from './mirror.js';
+import { store } from './util.js?v=6e0ce12';
+import { db } from './account.js?v=6e0ce12';
+import { createMirror, clone } from './mirror.js?v=6e0ce12';
 
 export const COLORS = ['#7aa2f7', '#9ece6a', '#f7768e', '#e0af68', '#bb9af7', '#2ac3de', '#ff9e64', '#73daca'];
 

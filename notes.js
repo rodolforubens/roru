@@ -5,14 +5,14 @@
 // below as it was. Pages nest in other pages through their text (a link to the nested page, or a
 // database block); databases show in the tree as one item. Tabs and spaces belong to app.js (see
 // initNotesUi); the table and board views and the properties are in views.js.
-import * as S from './notes-store.js';
-import * as G from './git.js';
-import { createEditor } from './editor.js';
-import { toMarkdown } from './markdown.js';
-import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView } from './views.js';
-import { importNotion } from './notion-import.js';
-import { esc, icon, store, folderName, plural, debounce } from './util.js';
-import { desktop, invoke, isMobile } from './platform.js';
+import * as S from './notes-store.js?v=6e0ce12';
+import * as G from './git.js?v=6e0ce12';
+import { createEditor } from './editor.js?v=6e0ce12';
+import { toMarkdown } from './markdown.js?v=6e0ce12';
+import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView } from './views.js?v=6e0ce12';
+import { importNotion } from './notion-import.js?v=6e0ce12';
+import { esc, icon, store, folderName, plural, debounce } from './util.js?v=6e0ce12';
+import { desktop, invoke, isMobile } from './platform.js?v=6e0ce12';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
