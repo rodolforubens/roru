@@ -10,7 +10,8 @@ import * as P from './projects.js';
 import { syncStatus, onSyncStatus } from './mirror.js';
 import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js';
 import * as S from './notes-store.js';
-import { desktop, invoke } from './platform.js';
+import { desktop, invoke, isMobile, onMobileChange } from './platform.js';
+import * as M from './mobile.js';
 import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js';
 import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js';
 
@@ -648,6 +649,7 @@ function showPage(note) {
   renderOpBanner();
   if (note) mountNoteTab(note);
   else renderHome();
+  M.visited({ space: tabs.space, note });
 }
 
 // Opens a note in a tab; with `replace`, the note tab being shown goes there instead.
@@ -703,6 +705,7 @@ function renderTabs() {
     + `<button class="tab-new" title="Open a folder or a new note (Ctrl+T)">${icon('plus')}</button>`;
   $('#tabs .tab.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   paintBusy();
+  M.paintBar();
 }
 
 // Menu of the "+" button: the project's folders that are not open, a folder, or one of the recent
@@ -821,7 +824,8 @@ async function restoreSpaces() {
   // (the tabs of projects not shown now are kept: signed in, the projects of this computer aren't shown)
   tabs.spaces = spaces;
   const space = store('space');
-  await switchSpace(P.getProject(space) ? space : 'home');
+  // (a phone starts at Home)
+  await switchSpace(!isMobile() && P.getProject(space) ? space : 'home');
 }
 
 // The tabs of a space are checked when the space is first shown in this run: folders and notes
@@ -875,7 +879,8 @@ async function switchSpace(id) {
     tabs.list = [...new Set(tabs.list.map(p => (roots.has(p) ? roots.get(p) : p)).filter(Boolean))];
     if (activeKey()) return renderTabs(); // a tab was opened meanwhile
   }
-  if (tabs.list.includes(saved.active)) await activateTab(saved.active);
+  // (on a phone a space opens at its pinned page: its tabs are where it has been, not what to show)
+  if (tabs.list.includes(saved.active) && !isMobile()) await activateTab(saved.active);
   else showHome();
 }
 
@@ -1765,6 +1770,10 @@ function renderSignIn() {
 
 function renderWelcome() {
   if (!desktop && !currentUser()) return renderSignIn();
+  if (isMobile()) {
+    $('#main').innerHTML = '<div class="welcome-scroll"></div>';
+    return M.renderHome($('#main > .welcome-scroll'));
+  }
   const recent = desktop ? store('recent') || [] : [];
   const projects = P.listProjects(), archived = P.archivedProjects();
   // (the page scrolls when it is taller than the window, and the recent list in its own box)
@@ -3251,7 +3260,30 @@ S.onNotesChange(() => {
 });
 
 P.onProjectsChange(projectsChangedElsewhere);
-onSyncStatus(paintAccount);
+onSyncStatus(() => { paintAccount(); M.paintBar(); });
+
+// The phone's screens (see mobile.js): going to one shows its space and its note, or its pinned page.
+M.initMobile({
+  screen: () => ({ space: tabs.space, note: state.note }),
+  go: async ({ space, note }) => {
+    if (space !== tabs.space) await switchSpace(space === 'home' || P.getProject(space) ? space : 'home');
+    if (note && S.getNote(note)) openNoteTab(note);
+    else if (activeKey()) showHome();
+  },
+  noteTitle, noteIcon,
+  noteMenu: id => noteMenuItems(id, 'tab'),
+  projectMenu: p => (p ? projectMenuItems(p).slice(2) : []),
+  accountButton, accountMenu, newProject,
+  newPage: space => newNote({ space, open: 'tab' }),
+  renderNotes: (el, space) => renderNotesPanel(el, space),
+  showMenu, toast,
+});
+// Turning a window into a phone's (or back): no peeks there, and Home is drawn for it.
+onMobileChange(() => {
+  closePeek();
+  if (!activeKey()) renderHome();
+  M.paintBar();
+});
 onAccount(accountChanged);
 
 (async () => {

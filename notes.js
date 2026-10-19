@@ -12,7 +12,7 @@ import { toMarkdown } from './markdown.js';
 import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView } from './views.js';
 import { importNotion } from './notion-import.js';
 import { esc, icon, store, folderName, plural, debounce } from './util.js';
-import { desktop, invoke } from './platform.js';
+import { desktop, invoke, isMobile } from './platform.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -331,9 +331,11 @@ function moveToSpace(id) {
 // Opening notes: tabs and peeks
 // =====================================================================
 
-// `how`: 'tab', 'side', 'center', or where its parent opens the notes inside it.
+// `how`: 'tab', 'side', 'center', or where its parent opens the notes inside it. A phone has no
+// peeks: notes open as the whole screen.
 export function openNote(id, how = openPrefOf(id), { focusTitle = false } = {}) {
   if (!S.getNote(id)) return;
+  if (isMobile()) how = 'tab';
   if (how === 'tab' || host.activeNote() === id) {
     if (peek?.page.id === id) closePeek();
     host.openTab(id);

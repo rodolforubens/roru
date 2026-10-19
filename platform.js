@@ -19,3 +19,11 @@ export const invoke = desktop ? tauri.core.invoke : webInvoke;
 export const convertFileSrc = desktop ? tauri.core.convertFileSrc : src => src;
 
 if (!desktop) document.documentElement.classList.add('web');
+
+// A phone, or a window as narrow as one: the app shows one screen at a time (see mobile.js).
+const narrow = matchMedia('(max-width: 640px)');
+export const isMobile = () => narrow.matches;
+export const onMobileChange = fn => narrow.addEventListener('change', () => fn(narrow.matches));
+const markMobile = () => document.documentElement.classList.toggle('mobile', narrow.matches);
+markMobile();
+narrow.addEventListener('change', markMobile);

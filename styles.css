@@ -1598,3 +1598,76 @@ body.note-page .git-side, body.note-page .ex-side, body:not(.note-page) .note-si
 }
 .lk-add:hover { border-color: var(--text-3); color: var(--text-2); background: var(--hover); }
 .lk-add .ic { width: 18px; height: 18px; }
+
+/* ---------- a phone: one screen at a time (see mobile.js) ---------- */
+#mbar, #mnav { display: none; }
+html.mobile body { height: 100dvh; }
+html.mobile #rail, html.mobile #tabs, html.mobile #toolbar, html.mobile #statusbar, html.mobile #op-banner,
+html.mobile #sidebar, html.mobile #split-sidebar, html.mobile .np-bar, html.mobile .dash-grip { display: none !important; }
+html.mobile #mbar {
+  display: flex; align-items: center; gap: 2px; height: 52px; flex: none; padding: 0 6px 0 8px;
+  border-bottom: 1px solid var(--border); background: var(--bg);
+}
+html.mobile #mnav {
+  display: flex; justify-content: space-around; align-items: center; flex: none; height: 56px;
+  padding-bottom: env(safe-area-inset-bottom); border-top: 1px solid var(--border); background: var(--bg);
+}
+html.signed-out #mbar, html.signed-out #mnav { display: none !important; }
+.mb-btn, .mn-btn {
+  display: grid; place-items: center; width: 42px; height: 42px; flex: none; padding: 0;
+  border: none; border-radius: 12px; background: none; color: var(--text-2); cursor: pointer;
+}
+.mn-btn { width: 64px; }
+.mb-btn:active, .mn-btn:active { background: var(--hover); }
+.mb-btn .ic, .mn-btn .ic { width: 21px; height: 21px; }
+.mb-title { flex: 1; min-width: 0; display: flex; align-items: center; gap: 7px; padding: 0 6px; font-size: 16px; font-weight: 650; }
+.mb-title span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mb-title .ic { width: 18px; height: 18px; color: var(--text-2); }
+.mb-account { display: grid; place-items: center; width: 42px; height: 42px; flex: none; }
+.mb-account .rail-account { margin: 0; }
+
+/* Home: the recent notes as cards, the projects, and Home's notes */
+.mh { width: 100%; padding: 14px 0 40px; align-self: flex-start; }
+.mh-sec { margin-bottom: 22px; }
+.mh-sec > h4 { margin: 0 16px 8px; font-size: 13px; font-weight: 600; color: var(--text-2); }
+.mh-recents { display: flex; gap: 10px; overflow-x: auto; padding: 0 16px 4px; scroll-snap-type: x mandatory; scroll-padding: 0 16px; scrollbar-width: none; }
+.mh-recents::-webkit-scrollbar { display: none; }
+.mh-card {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 8px; flex: none; width: 132px; height: 112px;
+  padding: 0 12px 12px; border: 1px solid var(--border); border-radius: 14px; background: var(--bg-2);
+  overflow: hidden; text-align: left; color: var(--text); scroll-snap-align: start; cursor: pointer;
+}
+.mh-card-top { align-self: stretch; height: 40px; margin: 0 -12px; flex: none; background: var(--bg-3); }
+.mh-card > .ic { width: 22px; height: 22px; margin-top: -20px; color: var(--text-2); }
+.mh-card-title { font-weight: 600; font-size: 13.5px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.mh-row {
+  display: flex; align-items: center; gap: 12px; width: 100%; padding: 9px 16px; border: none; background: none;
+  color: var(--text); text-align: left; font-size: 15px; cursor: pointer;
+}
+.mh-row:active { background: var(--hover); }
+.mh-row-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mh-row > .ic { color: var(--text-3); }
+.mh-add { color: var(--text-2); }
+.mh-add > .ic:first-child { width: 30px; }
+.mh-notes { padding: 0 6px; }
+
+/* search, over everything */
+.msearch { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; background: var(--bg); }
+.ms-bar { display: flex; align-items: center; gap: 8px; height: 56px; flex: none; padding: 0 6px 0 16px; border-bottom: 1px solid var(--border); color: var(--text-2); }
+.ms-bar input { flex: 1; min-width: 0; height: 40px; border: none; outline: none; background: none; font-size: 16px; }
+.ms-list { flex: 1; overflow-y: auto; padding: 6px 0; }
+.ms-item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 16px; border: none; background: none; color: var(--text); text-align: left; cursor: pointer; }
+.ms-item:active { background: var(--hover); }
+.ms-item > .ic { width: 20px; height: 20px; color: var(--text-2); }
+.ms-text { display: flex; flex-direction: column; min-width: 0; }
+.ms-text b { font-size: 15px; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ms-text span { font-size: 12px; color: var(--text-3); }
+.ms-empty { padding: 30px 16px; text-align: center; color: var(--text-3); }
+
+/* pages, dashboards and boards at a phone's width */
+html.mobile .np-doc { padding: 14px 16px 40vh; }
+html.mobile .np-title { font-size: 28px; }
+html.mobile .dash-head { padding: 16px 16px 12px; }
+html.mobile .dash-links { margin: 0 16px 24px; grid-template-columns: 1fr; }
+html.mobile .bd { scroll-snap-type: x mandatory; }
+html.mobile .bd-col { width: calc(100vw - 72px); scroll-snap-align: start; }

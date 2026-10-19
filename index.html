@@ -7,12 +7,17 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='112' fill='%23272c38'/%3E%3Cpath d='M176 128v256M176 304c0-64 160-48 160-112' fill='none' stroke='%237aa2f7' stroke-width='36' stroke-linecap='round'/%3E%3Ccircle cx='176' cy='128' r='40' fill='%239ece6a'/%3E%3Ccircle cx='176' cy='384' r='40' fill='%239ece6a'/%3E%3Ccircle cx='336' cy='176' r='40' fill='%23f7768e'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="styles.css">
   <!-- the web page starts signed out (only the sign-in shows) until the account is read (see app.js) -->
-  <script>if (!window.__TAURI__) document.documentElement.classList.add('web', 'signed-out');</script>
+  <script>
+    if (!window.__TAURI__) document.documentElement.classList.add('web', 'signed-out');
+    if (matchMedia('(max-width: 640px)').matches) document.documentElement.classList.add('mobile');
+  </script>
   <script type="module" src="app.js"></script>
 </head>
 <body>
   <nav id="rail"></nav>
   <div id="app">
+    <!-- on a phone: the bar on top (back, title, menu) and the one at the bottom (see mobile.js) -->
+    <header id="mbar"></header>
     <nav id="tabs"></nav>
     <header id="toolbar">
       <button id="repo-btn" class="repo-btn" title="Switch repository (Ctrl+O)">
@@ -59,6 +64,7 @@
       <div id="peek" hidden></div>
     </div>
 
+    <nav id="mnav"></nav>
     <footer id="statusbar">
       <span id="sb-left"></span>
       <span class="spacer"></span>
