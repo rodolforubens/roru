@@ -1602,6 +1602,9 @@ body.note-page .git-side, body.note-page .ex-side, body:not(.note-page) .note-si
 /* ---------- a phone: one screen at a time (see mobile.js) ---------- */
 #mbar, #mnav { display: none; }
 html.mobile body { height: 100dvh; }
+/* no scrollbars taking room, like the phone's own apps */
+html.mobile ::-webkit-scrollbar { width: 0; height: 0; }
+html.mobile * { scrollbar-width: none; }
 html.mobile #rail, html.mobile #tabs, html.mobile #toolbar, html.mobile #statusbar, html.mobile #op-banner,
 html.mobile #sidebar, html.mobile #split-sidebar, html.mobile .np-bar, html.mobile .dash-grip { display: none !important; }
 html.mobile #mbar {
@@ -1653,16 +1656,16 @@ html.signed-out #mbar, html.signed-out #mnav { display: none !important; }
 
 /* search, over everything */
 .msearch { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; background: var(--bg); }
-.ms-bar { display: flex; align-items: center; gap: 8px; height: 56px; flex: none; padding: 0 6px 0 16px; border-bottom: 1px solid var(--border); color: var(--text-2); }
-.ms-bar input { flex: 1; min-width: 0; height: 40px; border: none; outline: none; background: none; font-size: 16px; }
-.ms-list { flex: 1; overflow-y: auto; padding: 6px 0; }
-.ms-item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 16px; border: none; background: none; color: var(--text); text-align: left; cursor: pointer; }
-.ms-item:active { background: var(--hover); }
-.ms-item > .ic { width: 20px; height: 20px; color: var(--text-2); }
-.ms-text { display: flex; flex-direction: column; min-width: 0; }
-.ms-text b { font-size: 15px; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ms-text span { font-size: 12px; color: var(--text-3); }
-.ms-empty { padding: 30px 16px; text-align: center; color: var(--text-3); }
+.msr-bar { display: flex; align-items: center; gap: 8px; height: 56px; flex: none; padding: 0 6px 0 16px; border-bottom: 1px solid var(--border); color: var(--text-2); }
+.msr-bar input { flex: 1; min-width: 0; height: 40px; border: none; outline: none; background: none; font-size: 16px; }
+.msr-list { flex: 1; overflow-y: auto; padding: 6px 0; }
+.msr-item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 16px; border: none; background: none; color: var(--text); text-align: left; cursor: pointer; }
+.msr-item:active { background: var(--hover); }
+.msr-item > .ic { width: 20px; height: 20px; color: var(--text-2); }
+.msr-text { display: flex; flex-direction: column; min-width: 0; }
+.msr-text b { font-size: 15px; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.msr-text span { font-size: 12px; color: var(--text-3); }
+.msr-empty { padding: 30px 16px; text-align: center; color: var(--text-3); }
 
 /* pages, dashboards and boards at a phone's width */
 html.mobile .np-doc { padding: 14px 16px 40vh; }
@@ -1671,3 +1674,9 @@ html.mobile .dash-head { padding: 16px 16px 12px; }
 html.mobile .dash-links { margin: 0 16px 24px; grid-template-columns: 1fr; }
 html.mobile .bd { scroll-snap-type: x mandatory; }
 html.mobile .bd-col { width: calc(100vw - 72px); scroll-snap-align: start; }
+/* databases take the whole width of the phone: their bar and lists keep the text's margin, and
+   boards and tables scroll from it to the edges */
+html.mobile .np-wide .np-children, html.mobile .np-wide .note-prose .db-block { --wide: 100cqw; }
+html.mobile .np-wide .cv-bar, html.mobile .np-wide .cv-body.cv-list, html.mobile .np-wide .cv-empty { margin-left: 16px; margin-right: 16px; }
+html.mobile .np-wide .bd { padding: 0 16px 8px; scroll-padding: 0 16px; }
+html.mobile .np-wide .vt-wrap { padding: 0 16px; }

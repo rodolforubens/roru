@@ -131,9 +131,9 @@ export function renderHome(el) {
 function openSearch() {
   const root = document.createElement('div');
   root.className = 'msearch';
-  root.innerHTML = `<div class="ms-bar">${icon('search')}<input type="search" placeholder="Search pages and projects" spellcheck="false"><button class="mb-btn" data-close title="Close">${icon('close')}</button></div><div class="ms-list"></div>`;
+  root.innerHTML = `<div class="msr-bar">${icon('search')}<input type="search" placeholder="Search pages and projects" spellcheck="false"><button class="mb-btn" data-close title="Close">${icon('close')}</button></div><div class="msr-list"></div>`;
   document.body.append(root);
-  const input = $('input', root), list = $('.ms-list', root);
+  const input = $('input', root), list = $('.msr-list', root);
   const spaces = ['home', ...P.listProjects().map(p => p.id)];
   const spaceName = s => P.getProject(s)?.name || 'Home';
   const paint = () => {
@@ -141,14 +141,14 @@ function openSearch() {
     const notes = spaces.flatMap(s => S.notesOf(s)).filter(n => !q || (n.title || 'untitled').toLowerCase().includes(q))
       .sort((a, b) => (b.updated || 0) - (a.updated || 0)).slice(0, 40);
     const projects = P.listProjects().filter(p => q && p.name.toLowerCase().includes(q));
-    list.innerHTML = projects.map(p => `<button class="ms-item" data-project="${esc(p.id)}"><span class="proj-badge" style="--pc: ${p.color}">${esc(P.initials(p.name))}</span><span class="ms-text"><b>${esc(p.name)}</b><span>Project</span></span></button>`).join('')
-      + notes.map(n => `<button class="ms-item" data-note="${esc(n.id)}">${icon(host.noteIcon(n.id))}<span class="ms-text"><b>${esc(n.title || 'Untitled')}</b><span>${esc(spaceName(n.space))}</span></span></button>`).join('')
-      + (projects.length || notes.length ? '' : '<div class="ms-empty">Nothing found</div>');
+    list.innerHTML = projects.map(p => `<button class="msr-item" data-project="${esc(p.id)}"><span class="proj-badge" style="--pc: ${p.color}">${esc(P.initials(p.name))}</span><span class="msr-text"><b>${esc(p.name)}</b><span>Project</span></span></button>`).join('')
+      + notes.map(n => `<button class="msr-item" data-note="${esc(n.id)}">${icon(host.noteIcon(n.id))}<span class="msr-text"><b>${esc(n.title || 'Untitled')}</b><span>${esc(spaceName(n.space))}</span></span></button>`).join('')
+      + (projects.length || notes.length ? '' : '<div class="msr-empty">Nothing found</div>');
   };
   const close = () => root.remove();
   root.addEventListener('click', e => {
     if (e.target.closest('[data-close]')) return close();
-    const it = e.target.closest('.ms-item');
+    const it = e.target.closest('.msr-item');
     if (!it) return;
     close();
     if (it.dataset.project) go({ space: it.dataset.project, note: null });
