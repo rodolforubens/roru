@@ -19,8 +19,31 @@ const save = () => (mirror.active ? mirror.write() : store('projects', projects)
 
 const newId = () => crypto.randomUUID?.() ?? Date.now().toString(36) + Math.random().toString(36).slice(2);
 
-export const listProjects = () => projects;
-export const getProject = id => projects.find(p => p.id === id) || null;
+// Archived projects (`archived`: when) are kept with everything they had, but left out of the rail
+// and of everything else: only archivedProjects() and the functions that restore or delete them see
+// them. getProject() is null for them, like for a project that isn't there.
+const find = id => projects.find(p => p.id === id) || null;
+export const listProjects = () => projects.filter(p => !p.archived);
+export const getProject = id => { const p = find(id); return p && !p.archived ? p : null; };
+export const hasProject = id => !!find(id);
+export const allProjects = () => projects;
+
+// Most recently archived first.
+export const archivedProjects = () => projects.filter(p => p.archived).sort((a, b) => b.archived - a.archived);
+
+export function archiveProject(id) {
+  const p = getProject(id);
+  if (!p) return;
+  p.archived = Date.now();
+  save();
+}
+
+export function restoreProject(id) {
+  const p = find(id);
+  if (!p?.archived) return;
+  delete p.archived;
+  save();
+}
 
 // The color used the least so far, so a new project stands apart from the others.
 function nextColor() {
@@ -183,7 +206,7 @@ export function readProjectsFile(text) {
 // their notes and tabs on this computer follow them; the ones already there are left as they are.
 // Nothing is removed from where they came from. Returns how many were added.
 export function importProjects(list) {
-  const fresh = list.filter(p => !getProject(p.id));
+  const fresh = list.filter(p => !find(p.id));
   projects.push(...fresh.map(p => {
     const c = JSON.parse(JSON.stringify(p));
     return { ...c, color: c.color || nextColor(), folders: Array.isArray(c.folders) ? c.folders.filter(f => f?.path) : [], links: Array.isArray(c.links) ? c.links.filter(l => l?.id && l.url) : [] };

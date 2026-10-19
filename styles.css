@@ -704,6 +704,11 @@ table.rs-table .code { padding-left: 12px; }
 .welcome .tips { margin-top: 28px; color: var(--text-3); font-size: 12px; }
 .welcome-acts { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; }
 .recent-item.proj-item { flex-direction: row; align-items: center; gap: 10px; }
+/* archived projects: restored or deleted from their row, which doesn't open them */
+.recent-item.arch-item { cursor: default; }
+.arch-item .proj-badge { opacity: .55; }
+.arch-item .spacer { flex: 1; }
+.arch-item .btn-sm { flex: none; }
 .proj-badge {
   display: grid; place-items: center; width: 30px; height: 30px; flex: none; border-radius: 9px;
   background: var(--pc); color: #10131a; font-size: 12px; font-weight: 700;

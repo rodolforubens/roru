@@ -914,7 +914,7 @@ function accountButton() {
 }
 
 // Projects of this computer (kept for when signed out) that the account doesn't have.
-const localOnly = () => P.localProjects().filter(p => !P.getProject(p.id));
+const localOnly = () => P.localProjects().filter(p => !P.hasProject(p.id));
 
 async function accountMenu(x, y) {
   const u = currentUser();
@@ -922,7 +922,7 @@ async function accountMenu(x, y) {
   const local = desktop && u ? localOnly() : [];
   const localNotes = desktop && u ? await S.localOnlyNotes().catch(() => []) : [];
   const files = [
-    { label: u ? 'Export the projects of the account…' : 'Export projects…', run: () => exportProjects(P.listProjects()) },
+    { label: u ? 'Export the projects of the account…' : 'Export projects…', run: () => exportProjects(P.allProjects()) },
     ...(desktop && u && P.localProjects().length ? [{ label: 'Export the projects of this computer…', run: () => exportProjects(P.localProjects()) }] : []),
     { label: u ? 'Import projects to the account from a file…' : 'Import projects from a file…', run: importProjectsFile },
   ];
@@ -1057,8 +1057,7 @@ async function accountChanged(user) {
 // like when deleting them here, and the current space goes home if its project is gone.
 async function projectsChangedElsewhere({ removed }) {
   for (const id of removed) {
-    // (unless this computer still has it, signed out: then its notes stay with it)
-    if (desktop && !P.localProjects().some(p => p.id === id)) S.moveSpace(id, 'home');
+    // (its notes were moved to Home by the device that deleted it)
     if (id !== tabs.space && tabs.spaces[id]) { forgetTabs(tabs.spaces[id].list); delete tabs.spaces[id]; }
   }
   if (tabs.space !== 'home' && !currentProject()) {
@@ -1127,8 +1126,33 @@ function projectMenuItems(p) {
     ...(desktop ? addMenuItems(p.id) : []),
     { label: 'Rename…', run: () => renameProject(p.id) },
     '-',
+    { label: 'Archive project', run: () => archiveProject(p.id) },
     { label: 'Delete project…', danger: true, run: () => deleteProject(p.id) },
   ];
+}
+
+// An archived project leaves the rail with everything it has (folders, links, notes, its tabs), until
+// it is restored from the start page.
+async function archiveProject(id) {
+  const p = P.getProject(id);
+  if (!p) return;
+  if (tabs.space === id) {
+    captureUi();
+    tabs.spaces[id] = { list: tabs.list, active: activeKey(), seen: tabs.seen };
+  }
+  P.archiveProject(id);
+  if (tabs.space === id) await switchSpace('home');
+  saveTabs();
+  projectsChanged();
+  toast(`Archived “${p.name}”`, 'ok', 'Its folders, links, notes and tabs are kept. Restore it from the start page (Home), under Archived projects.');
+}
+
+function restoreProject(id) {
+  const p = P.archivedProjects().find(x => x.id === id);
+  if (!p) return;
+  P.restoreProject(id);
+  projectsChanged();
+  toast(`Restored “${p.name}”`, 'ok');
 }
 
 // The rail, the toolbar and the pinned tab show the projects: repaint them after a change.
@@ -1159,15 +1183,16 @@ async function renameProject(id) {
 }
 
 // The folders stay where they are and the notes move to Home: only the project and its tabs go away.
+// (also an archived project, from the start page)
 async function deleteProject(id) {
-  const p = P.getProject(id);
+  const p = P.getProject(id) || P.archivedProjects().find(x => x.id === id);
   const folders = p?.folders.length === 1 ? 'Its folder stays' : `Its ${p?.folders.length} folders stay`;
-  const n = desktop ? S.notesOf(id).length : 0;
-  const notes = !desktop ? ' Its notes in the desktop app move to Home.' : !n ? '' : n === 1 ? ' Its note moves to Home.' : ` Its ${n} notes move to Home.`;
+  const n = S.notesOf(id).length;
+  const notes = !n ? '' : n === 1 ? ' Its note moves to Home.' : ` Its ${n} notes move to Home.`;
   if (!p || !(await confirmBox('Delete project', `Delete the project "${p.name}"?\n\n${folders} on disk: only the project and its tabs are removed.${notes}`, 'Delete project'))) return;
   const closing = tabs.space === id ? tabs.list : tabs.spaces[id]?.list || [];
   P.deleteProject(id);
-  if (desktop) S.moveSpace(id, 'home');
+  if (S.notesMode()) S.moveSpace(id, 'home');
   delete tabs.spaces[id];
   if (tabs.space === id) await switchSpace('home');
   forgetTabs(closing);
@@ -1741,7 +1766,7 @@ function renderSignIn() {
 function renderWelcome() {
   if (!desktop && !currentUser()) return renderSignIn();
   const recent = desktop ? store('recent') || [] : [];
-  const projects = P.listProjects();
+  const projects = P.listProjects(), archived = P.archivedProjects();
   $('#main').innerHTML = `<div class="welcome">${LOGO}
     <h1>Roru Dashboard</h1>
     <p>${desktop ? 'Projects, notes and Git in one place.' : 'Your projects and notes. Git and the folders are in the desktop app.'}</p>
@@ -1749,13 +1774,28 @@ function renderWelcome() {
     <div class="welcome-notes"></div>
     ${projects.length ? `<div class="recent"><h4>Projects</h4>${projects.map(p => `<div class="recent-item proj-item" data-project="${esc(p.id)}">
       <span class="proj-badge" style="--pc: ${p.color}">${esc(P.initials(p.name))}</span><span class="proj-text"><b>${esc(p.name)}</b><span class="p">${plural(p.folders.length, 'folder')}</span></span></div>`).join('')}</div>` : ''}
+    ${archived.length ? `<div class="recent archived"><h4>Archived projects</h4>${archived.map(p => `<div class="recent-item proj-item arch-item" data-archived="${esc(p.id)}">
+      <span class="proj-badge" style="--pc: ${p.color}">${esc(P.initials(p.name))}</span><span class="proj-text"><b>${esc(p.name)}</b><span class="p">${plural(p.folders.length, 'folder')} · archived ${esc(fmtRelative(p.archived / 1000))}</span></span>
+      <span class="spacer"></span><button class="btn-sm" data-arch="restore">Restore</button><button class="btn-sm" data-arch="delete">Delete…</button></div>`).join('')}</div>` : ''}
     ${recent.length ? `<div class="recent"><h4>Recent</h4>${recent.map(p => `<div class="recent-item" data-path="${esc(p)}"><b>${esc(folderName(p))}</b><span class="p">${esc(p)}</span></div>`).join('')}</div>` : ''}
     <div class="tips"><kbd>Ctrl</kbd> <kbd>+</kbd> / <kbd>−</kbd> zoom · <kbd>Ctrl</kbd> <kbd>0</kbd> reset · <kbd>Ctrl</kbd> + mouse wheel</div>
   </div>`;
   if (desktop) $('#w-open').onclick = openRepoDialog;
   $('#w-project').onclick = newProject;
   renderNotesPanel($('.welcome-notes'), 'home');
-  document.querySelectorAll('.proj-item').forEach(el => {
+  document.querySelectorAll('.arch-item').forEach(el => {
+    const id = el.dataset.archived;
+    el.onclick = e => {
+      const act = e.target.closest('[data-arch]')?.dataset.arch;
+      if (act === 'restore') restoreProject(id);
+      else if (act === 'delete') deleteProject(id);
+    };
+    el.oncontextmenu = e => {
+      e.preventDefault();
+      showMenu(e.clientX, e.clientY, [{ label: 'Restore', run: () => restoreProject(id) }, '-', { label: 'Delete project…', danger: true, run: () => deleteProject(id) }]);
+    };
+  });
+  document.querySelectorAll('.proj-item[data-project]').forEach(el => {
     el.onclick = () => switchSpace(el.dataset.project);
     el.oncontextmenu = e => { e.preventDefault(); showMenu(e.clientX, e.clientY, projectMenuItems(P.getProject(el.dataset.project))); };
   });
