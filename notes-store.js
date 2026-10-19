@@ -1,11 +1,17 @@
-// Storage of the notes: pages with a title and rich text content (a ProseMirror document as JSON),
-// in a tree per space (a project id, or 'home'). The UI only goes through this module, so the
-// storage can change without touching it: notes are local-first, and syncing them (Supabase, merged
-// with Yjs) is planned behind this same interface. For now they are files in the app data folder:
-//   notes/index.json   every note's metadata: { id, space, parent, title, order, created, updated,
-//                      props, wideViews, openIn }, and the collections (see below)
-//   notes/<id>.json    its content
-//   notes/files/<id>/  its files (images), referred to in the content as "files/<id>/<name>"
+// Storage of the notes: pages with a title and rich text content, in a tree per space (a project
+// id, or 'home'). The UI only goes through this module, which keeps them in one of two places:
+//
+// - On this computer (the desktop app signed out), as files in the app data folder:
+//     notes/index.json   every note's metadata: { id, space, parent, title, order, created, updated,
+//                        props, wideViews, openIn }, and the collections (see below)
+//     notes/<id>.json    its content (a ProseMirror document as JSON)
+//     notes/files/<id>/  its files (images), referred to in the content as "files/<id>/<name>"
+// - In the account (signed in; always on the web page), live like the projects: each note is a row
+//   of the `notes` table ({ id, data: its metadata, and a database's collection }, kept by
+//   mirror.js), its text is a Yjs document (see "Content" below) and its files are in the
+//   `note-files` storage bucket, under "<user id>/files/<id>/<name>".
+// Signing in never changes the notes kept on this computer: they are only copied to the account
+// when the user asks (copyLocalNotes).
 //
 // A note is a page (`kind` 'page', the default: rich text, with its nested pages as children) or a
 // database (`kind` 'database': no text, its children are its items). Like in Notion, a database
@@ -15,14 +21,19 @@
 // 'board', name, sort, hidden, groupBy, pinned }) to show them.
 // Values by type: text and url a string, number a number, select an option id, multi a list of
 // option ids, date "YYYY-MM-DD", checkbox true, branch { repo (folder path), name }.
-import { invoke, convertFileSrc } from './platform.js';
+import { desktop, invoke, convertFileSrc } from './platform.js';
+import { db, currentUser } from './account.js';
+import { createMirror, clone, reportStatus } from './mirror.js';
+import { Y, updateYFragment, yDocToProsemirrorJSON } from './vendor/tiptap.js';
+import { noteSchema } from './editor.js';
 
-const SAVE_DELAY = 300; // ms after the last edit
+const SAVE_DELAY = 300; // ms after the last edit (files on this computer)
 
-let dir = null;
+let mode = null;             // 'local' (files on this computer), 'account', or null (signed out on the web)
+let dir = null;              // the notes' folder on this computer
 let notes = [];
 let collections = {};
-const contents = new Map();  // id -> content, once loaded or edited (open editors share it)
+const contents = new Map();  // id -> content, once loaded or edited (open editors share it; local only)
 const pending = new Map();   // id -> timer of a content write ('index' for the index)
 const listeners = new Set();
 let batching = 0;            // inside batch(): changes are told once, at its end
@@ -31,8 +42,36 @@ let batched = [];
 const newId = () => crypto.randomUUID?.() ?? Date.now().toString(36) + Math.random().toString(36).slice(2);
 const file = name => `${dir}/${name}`;
 
+export const notesMode = () => mode;
+
 export async function initNotes() {
-  dir = (await invoke('app_data_dir')).replace(/\\/g, '/') + '/notes';
+  addEventListener('blur', flushNotes);
+  document.addEventListener('visibilitychange', flushNotes);
+  if (desktop) dir = (await invoke('app_data_dir')).replace(/\\/g, '/') + '/notes';
+  await useAccount(currentUser());
+}
+
+// Shows the notes of the account of `user` (signed in), or the ones kept on this computer (null).
+export async function useAccount(user) {
+  flushNotes();
+  closeDocs();
+  notes = [];
+  collections = {};
+  contents.clear();
+  if (user && db) {
+    mode = 'account';
+    mirror.use(user);
+    openDocsChannel(user);
+    resendKept();
+  } else {
+    mirror.use(null);
+    mode = desktop ? 'local' : null;
+    if (mode === 'local') await loadLocal();
+  }
+  tellAll([]);
+}
+
+async function loadLocal() {
   const text = await invoke('read_file', { repo: dir, path: 'index.json' }).catch(() => null);
   let version = 3;
   try {
@@ -47,8 +86,6 @@ export async function initNotes() {
   if (version < 3) await migrate();
   // the webview loads the notes' images straight from their files
   await invoke('allow_assets', { repo: dir }).catch(() => {});
-  addEventListener('blur', flushNotes);
-  document.addEventListener('visibilitychange', flushNotes);
 }
 
 // Many changes at once (an import): the listeners hear about them once, when `fn` is done.
@@ -67,18 +104,40 @@ export async function batch(fn) {
 
 // ---------- files ----------
 
-// The address the webview loads a file of the notes from ("files/<id>/<name>"), or a web address as is.
-export const fileUrl = src => (!src || /^[a-z][a-z0-9+.-]*:/i.test(src) ? src : convertFileSrc(`${dir}/${src}`));
+const BUCKET = 'note-files';
+const signed = new Map(); // "files/<id>/<name>" -> { url (a promise), at }
+const isAddress = src => /^[a-z][a-z0-9+.-]*:/i.test(src);
+
+// The address the webview loads a file of the notes from ("files/<id>/<name>"), or a web address as
+// is. In the account it is a link that works for an hour, so it comes as a promise.
+export function fileUrl(src) {
+  if (!src || isAddress(src)) return src;
+  if (mode !== 'account') return convertFileSrc(`${dir}/${src}`);
+  const hit = signed.get(src);
+  if (hit && Date.now() - hit.at < 50 * 60_000) return hit.url;
+  const url = db.storage.from(BUCKET).createSignedUrl(`${mirror.user.id}/${src}`, 3600).then(r => r.data?.signedUrl || '', () => '');
+  signed.set(src, { url, at: Date.now() });
+  return url;
+}
+
+const TYPES = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', avif: 'image/avif', bmp: 'image/bmp', ico: 'image/x-icon' };
+const typeOf = name => TYPES[name.slice(name.lastIndexOf('.') + 1).toLowerCase()] || 'application/octet-stream';
 
 // Saves a file of a note; returns how its content refers to it.
 export async function saveFile(id, name, bytes) {
   const src = `files/${id}/${name}`;
+  if (mode === 'account') {
+    const { error } = await db.storage.from(BUCKET).upload(`${mirror.user.id}/${src}`, new Blob([bytes], { type: typeOf(name) }), { upsert: true });
+    if (error) throw error;
+    signed.delete(src);
+    return src;
+  }
   await invoke('write_bytes', bytes, { headers: { path: encodeURIComponent(`${dir}/${src}`) } });
   return src;
 }
 
-// `fn({ ids })` runs after notes are created, renamed, moved, deleted or get new property values,
-// and after collections change (with no ids).
+// `fn({ ids, removed })` runs after notes are created, renamed, moved, deleted or get new property
+// values, and after collections change (with no ids); `removed` has the notes deleted elsewhere.
 export function onNotesChange(fn) {
   listeners.add(fn);
   return () => listeners.delete(fn);
@@ -89,6 +148,8 @@ const saveIndex = () => schedule('index', () => {
   const used = Object.fromEntries(Object.entries(collections).filter(([key]) => isDatabase(key)));
   return invoke('write_text', { path: file('index.json'), content: JSON.stringify({ version: 3, notes, collections: used }) });
 });
+
+const persist = () => (mode === 'account' ? mirror.write() : mode === 'local' ? saveIndex() : null);
 
 // Before databases were notes of their own, any note's sub-pages (or a space's top-level notes)
 // had properties and views. Those become databases: a note with no text turns into one; a note
@@ -151,10 +212,12 @@ async function migrate() {
 }
 
 function changed(ids = []) {
-  saveIndex();
   if (batching) { batched.push(...ids); return; }
-  for (const fn of listeners) fn({ ids });
+  persist();
+  tellAll(ids);
 }
+
+const tellAll = (ids, removed = []) => { for (const fn of listeners) fn({ ids, removed }); };
 
 function schedule(key, write) {
   clearTimeout(pending.get(key)?.timer);
@@ -173,6 +236,7 @@ function run(key) {
 // Writes what is waiting to be saved now (when the window loses the focus, before closing a note).
 export function flushNotes() {
   for (const key of [...pending.keys()]) run(key);
+  for (const d of docs.values()) send(d);
 }
 
 // ---------- the tree ----------
@@ -204,7 +268,8 @@ export function createNote({ space, parent = null, title = '', props = null, kin
   if (kind === 'database') note.kind = 'database';
   if (props && Object.keys(props).length) note.props = { ...props };
   notes.push(note);
-  contents.set(note.id, null);
+  if (mode === 'account') newDoc(note.id); // (nothing to read: it starts empty)
+  else contents.set(note.id, null);
   changed([note.id]);
   return note;
 }
@@ -255,9 +320,12 @@ export function deleteNote(id) {
     contents.delete(x);
     clearTimeout(pending.get(x)?.timer);
     pending.delete(x);
-    invoke('remove_file', { path: file(`${x}.json`) }).catch(() => {});
-    invoke('remove_data_dir', { path: file(`files/${x}`) }).catch(() => {});
+    if (mode === 'local') {
+      invoke('remove_file', { path: file(`${x}.json`) }).catch(() => {});
+      invoke('remove_data_dir', { path: file(`files/${x}`) }).catch(() => {});
+    }
   }
+  if (mode === 'account') dropDocs(ids);
   changed(ids);
   return ids;
 }
@@ -510,9 +578,23 @@ export function setActiveView(key, id) {
 }
 
 // ---------- content ----------
+//
+// On this computer, a note's content is a ProseMirror document (JSON) in its file. In the account,
+// it is a Yjs document, so what is typed in two places at once merges without losing anything: it
+// is kept as the updates made to it, rows of `note_updates` ({ note_id, data: a Yjs update in
+// base64 }) that are only ever added, so no device can overwrite what another one wrote. An open
+// editor edits the document directly (the Collaboration extension); its changes are sent a few at
+// a time (and kept on this device until they are, so nothing typed offline is lost), and the ones
+// made elsewhere come in live. When a note has many rows, they are folded into one (the whole
+// document as a single update) and the rows it covers are deleted.
 
-// The note's content, or null when it is empty.
+// The note's content (JSON), or null when it is empty.
 export async function loadContent(id) {
+  if (mode === 'account') {
+    const d = await docOf(id);
+    const json = yDocToProsemirrorJSON(d.ydoc, FIELD);
+    return json.content?.length ? json : null;
+  }
   if (contents.has(id)) return contents.get(id);
   const text = await invoke('read_file', { repo: dir, path: `${id}.json` }).catch(() => null);
   let doc = null;
@@ -525,11 +607,329 @@ export async function loadContent(id) {
   return contents.get(id);
 }
 
+// Replaces the note's content (JSON). In the account, only what differs is changed in its document,
+// so what is being typed elsewhere stays.
 export function saveContent(id, doc) {
   const n = getNote(id);
   if (!n) return;
-  contents.set(id, doc);
   n.updated = Date.now();
+  if (mode === 'account') {
+    docOf(id).then(d => d.ydoc.transact(() => fill(d, doc))).catch(e => console.error('Saving a note failed', e));
+    persist();
+    return;
+  }
+  contents.set(id, doc);
   schedule(id, () => invoke('write_text', { path: file(`${id}.json`), content: JSON.stringify(doc) }));
   saveIndex();
+}
+
+const fill = (d, json) => updateYFragment(d.ydoc, d.ydoc.getXmlFragment(FIELD), noteSchema().nodeFromJSON(json), { mapping: new Map(), isOMark: new Map() });
+
+// What an editor of the note edits: its content (JSON, on this computer: its changes go to
+// saveContent), or its Yjs document (in the account: it saves itself).
+export async function openContent(id) {
+  if (mode === 'account') return { ydoc: (await docOf(id)).ydoc };
+  return { content: await loadContent(id) };
+}
+
+// An editor of the note was closed: what it changed is sent, and its rows folded when there are many.
+export function closeContent(id) {
+  flushNotes();
+  const d = docs.get(id);
+  if (d && d.rows.size > FOLD_AT) d.ready.then(() => fold(d));
+}
+
+const FIELD = 'default';         // the Yjs fragment the editor keeps the text in
+const FOLD_AT = 40;              // rows of a note that are folded into one
+const SEND_AFTER = 120;          // ms: what is typed meanwhile goes in the same row
+const REMOTE = { remote: true }; // the origin of the changes that came from the account
+
+const docs = new Map();          // note id -> { id, ydoc, ready, rows (ids applied), queue (updates to send), timer, sending, retry }
+let docsChannel = null;
+let docsUser = null;
+let failures = 0;
+
+const b64 = bytes => { let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(s); };
+const unb64 = text => Uint8Array.from(atob(text), c => c.charCodeAt(0));
+
+function docStatus() {
+  const busy = [...docs.values()].some(d => d.queue.length || d.sending);
+  reportStatus('text', mode !== 'account' ? null : failures ? 'offline' : busy ? 'syncing' : 'synced');
+}
+
+// What was typed and not sent yet is kept on this device (per user), so it survives going offline
+// or closing the app.
+const keptKey = () => `roru.notes-unsent.${docsUser?.id}`;
+function keepUnsent() {
+  if (!docsUser) return;
+  const out = {};
+  for (const d of docs.values()) if (d.queue.length) out[d.id] = d.queue.map(b64);
+  try { localStorage.setItem(keptKey(), JSON.stringify(out)); } catch {}
+}
+function keptUnsent() {
+  try { return JSON.parse(localStorage.getItem(keptKey())) || {}; } catch { return {}; }
+}
+
+function blankDoc(id) {
+  const d = { id, ydoc: new Y.Doc(), rows: new Set(), queue: [], timer: null, sending: null, retry: 0, folding: false };
+  docs.set(id, d);
+  return d;
+}
+const listen = d => d.ydoc.on('update', (u, origin) => { if (origin !== REMOTE) queue(d, u); });
+
+// A new note's document: there is nothing to read.
+function newDoc(id) {
+  const d = blankDoc(id);
+  listen(d);
+  d.ready = Promise.resolve(d);
+  return d;
+}
+
+// The note's document, read from the account the first time.
+function docOf(id) {
+  const known = docs.get(id);
+  if (known) return known.ready;
+  const d = blankDoc(id);
+  d.ready = (async () => {
+    await pull(d);
+    // what was typed here and not sent yet
+    for (const u of keptUnsent()[id] || []) {
+      const bytes = unb64(u);
+      Y.applyUpdate(d.ydoc, bytes, REMOTE);
+      d.queue.push(bytes);
+    }
+    listen(d);
+    if (d.queue.length) send(d);
+    else if (d.rows.size > FOLD_AT) fold(d);
+    return d;
+  })();
+  d.ready.catch(() => { if (docs.get(id) === d) docs.delete(id); });
+  return d.ready;
+}
+
+// Reads the rows of the note's document that this device doesn't have yet.
+async function pull(d) {
+  const after = d.rows.size ? Math.max(...d.rows) : 0;
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await db.from('note_updates').select('id, data').eq('note_id', d.id).gt('id', after).order('id').range(from, from + 999);
+    if (error) throw error;
+    for (const r of data) apply(d, r);
+    if (data.length < 1000) break;
+  }
+}
+
+function apply(d, r) {
+  if (d.rows.has(r.id)) return;
+  d.rows.add(r.id);
+  Y.applyUpdate(d.ydoc, unb64(r.data), REMOTE);
+}
+
+function queue(d, update) {
+  d.queue.push(update);
+  keepUnsent();
+  docStatus();
+  // a note's `updated` follows its text, at most once a minute (it is a write of its row)
+  const n = getNote(d.id);
+  if (n && Date.now() - (n.updated || 0) > 60_000) { n.updated = Date.now(); persist(); }
+  if (!d.timer && !d.sending) d.timer = setTimeout(() => send(d), SEND_AFTER);
+}
+
+// Sends what was typed as one row.
+function send(d) {
+  clearTimeout(d.timer);
+  d.timer = null;
+  if (d.sending || !d.queue.length || !docsUser) return d.sending;
+  const user = docsUser, batch = d.queue.splice(0);
+  d.sending = (async () => {
+    const { data, error } = await db.from('note_updates').insert({ note_id: d.id, data: b64(Y.mergeUpdates(batch)) }).select('id').single();
+    if (docsUser !== user) return;
+    if (error) {
+      console.warn('Could not send the text of a note', error);
+      d.queue.unshift(...batch);
+      failures++;
+      d.retry = Math.min(60000, d.retry ? d.retry * 2 : 2000);
+      d.timer = setTimeout(() => send(d), d.retry);
+      return;
+    }
+    d.rows.add(data.id);
+    if (d.retry) failures = Math.max(0, failures - 1);
+    d.retry = 0;
+    keepUnsent();
+  })().finally(() => {
+    d.sending = null;
+    if (d.queue.length && !d.timer) d.timer = setTimeout(() => send(d), SEND_AFTER);
+    docStatus();
+  });
+  docStatus();
+  return d.sending;
+}
+
+// Folds the note's rows into one: the whole document, as one update, then the rows it covers go.
+// Two devices folding at once leave two rows, which is fine (applying one twice changes nothing).
+async function fold(d) {
+  if (d.folding || d.queue.length || d.sending) return;
+  d.folding = true;
+  const covered = [...d.rows];
+  try {
+    const { data, error } = await db.from('note_updates').insert({ note_id: d.id, data: b64(Y.encodeStateAsUpdate(d.ydoc)) }).select('id').single();
+    if (error) throw error;
+    d.rows.add(data.id);
+    for (let i = 0; i < covered.length; i += 100) {
+      const part = covered.slice(i, i + 100);
+      const r = await db.from('note_updates').delete().in('id', part);
+      if (r.error) throw r.error;
+      part.forEach(x => d.rows.delete(x));
+    }
+  } catch (e) {
+    console.warn('Could not fold the rows of a note', e);
+  } finally {
+    d.folding = false;
+  }
+}
+
+// The text changed elsewhere comes in live, for the notes this device has read.
+function openDocsChannel(user) {
+  docsUser = user;
+  failures = 0;
+  docsChannel = db.channel(`note-text:${user.id}`)
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'note_updates' }, ({ new: r }) => {
+      const d = docs.get(r.note_id);
+      if (!d || d.rows.has(r.id)) return;
+      // (a row too big to come in the message is read)
+      d.ready.then(() => (r.data ? apply(d, r) : pull(d))).catch(() => {});
+    })
+    .subscribe(s => {
+      // (re)connected: what was missed meanwhile is read, and what was typed here is sent
+      if (s !== 'SUBSCRIBED') return;
+      for (const d of docs.values()) d.ready.then(() => pull(d)).then(() => send(d)).catch(() => {});
+    });
+  docStatus();
+}
+
+function closeDocs() {
+  if (docsChannel) { db.removeChannel(docsChannel); docsChannel = null; }
+  for (const d of docs.values()) { clearTimeout(d.timer); d.ydoc.destroy(); }
+  docs.clear();
+  signed.clear();
+  docsUser = null;
+  failures = 0;
+  docStatus();
+}
+
+// The notes with text typed and not sent last time are read, which sends it.
+function resendKept() {
+  for (const id of Object.keys(keptUnsent())) docOf(id).catch(() => {});
+}
+
+// Deleted notes take their text and files with them.
+function dropDocs(ids) {
+  for (const id of ids) {
+    const d = docs.get(id);
+    if (d) { clearTimeout(d.timer); d.queue = []; d.ydoc.destroy(); docs.delete(id); }
+  }
+  keepUnsent();
+  const uid = mirror.user.id;
+  db.from('note_updates').delete().in('note_id', ids).then(r => r.error && console.warn('Could not delete the text of the notes', r.error));
+  for (const id of ids) {
+    db.storage.from(BUCKET).list(`${uid}/files/${id}`).then(({ data }) => {
+      if (data?.length) db.storage.from(BUCKET).remove(data.map(f => `${uid}/files/${id}/${f.name}`));
+    });
+  }
+}
+
+addEventListener('online', () => { for (const d of docs.values()) send(d); });
+
+// ---------- the account ----------
+
+// A note as a row: its metadata, and a database's collection (properties and views).
+function rowsOf() {
+  return {
+    notes: new Map(notes.map(n => {
+      const { id, ...data } = n;
+      if (n.kind === 'database' && collections[id]) data.collection = collections[id];
+      return [id, { id, data: clone(data) }];
+    })),
+  };
+}
+
+// The notes from the rows. The note objects are kept (updated in place), so the ones the UI holds
+// stay current; the collections of what isn't a database (only looked at) stay as they are.
+function build(rows) {
+  const old = new Map(notes.map(n => [n.id, n]));
+  for (const key of Object.keys(collections)) if (rows.notes.has(key)) delete collections[key];
+  notes = [...rows.notes.values()].map(r => {
+    const { collection, ...data } = clone(r.data);
+    if (collection) collections[r.id] = collection;
+    const n = old.get(r.id) || {};
+    for (const k of Object.keys(n)) delete n[k];
+    return Object.assign(n, data, { id: r.id });
+  });
+}
+
+const mirror = createMirror({
+  name: 'notes',
+  tables: { notes: 'id, data' },
+  rowsOf,
+  build,
+  changed: ({ removed }) => {
+    const gone = removed.notes || [];
+    for (const id of gone) {
+      const d = docs.get(id);
+      if (d) { clearTimeout(d.timer); d.ydoc.destroy(); docs.delete(id); }
+    }
+    if (mode === 'account') tellAll(notes.map(n => n.id), gone);
+  },
+});
+
+// ---------- the notes of this computer, copied to the account ----------
+
+async function readLocalIndex() {
+  const text = await invoke('read_file', { repo: dir, path: 'index.json' }).catch(() => null);
+  try {
+    const data = text ? JSON.parse(text) : {};
+    return { notes: data.notes || [], collections: data.collections || {} };
+  } catch {
+    return { notes: [], collections: {} };
+  }
+}
+
+// The notes of this computer that the account doesn't have (signed in on the desktop app).
+export async function localOnlyNotes() {
+  if (!desktop || mode !== 'account') return [];
+  return (await readLocalIndex()).notes.filter(n => !getNote(n.id));
+}
+
+// Copies the notes of this computer that the account doesn't have, with their text, databases and
+// images, and the same ids (so mentions and tabs keep pointing at them). Nothing on this computer
+// changes. `onProgress(done, total)`. Returns how many were copied.
+export async function copyLocalNotes(onProgress = () => {}) {
+  if (!desktop || mode !== 'account') return 0;
+  const index = await readLocalIndex();
+  const fresh = index.notes.filter(n => !getNote(n.id));
+  if (!fresh.length) return 0;
+  await batch(() => {
+    for (const n of fresh) {
+      notes.push(clone(n));
+      if (index.collections[n.id]) collections[n.id] = clone(index.collections[n.id]);
+      newDoc(n.id);
+    }
+    batched.push(...fresh.map(n => n.id));
+  });
+  let done = 0;
+  for (const n of fresh) {
+    const text = await invoke('read_file', { repo: dir, path: `${n.id}.json` }).catch(() => null);
+    let json = null;
+    try { json = text ? JSON.parse(text) : null; } catch {}
+    const d = docs.get(n.id);
+    if (d && json?.content?.length) d.ydoc.transact(() => fill(d, json));
+    const files = await invoke('list_dir', { repo: dir, path: `files/${n.id}` }).catch(() => []);
+    for (const f of files.filter(f => !f.dir)) {
+      const bytes = await invoke('read_bytes', { path: file(`files/${n.id}/${f.name}`) });
+      await saveFile(n.id, f.name, new Uint8Array(bytes));
+    }
+    onProgress(++done, fresh.length);
+  }
+  flushNotes();
+  await Promise.all([...docs.values()].map(d => d.sending));
+  return fresh.length;
 }

@@ -7,6 +7,7 @@ import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, 
 import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js';
 import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js';
 import * as P from './projects.js';
+import { syncStatus, onSyncStatus } from './mirror.js';
 import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js';
 import * as S from './notes-store.js';
 import { desktop, invoke } from './platform.js';
@@ -504,6 +505,7 @@ async function openRecent(path) {
 function activateTab(key) {
   const id = noteOf(key);
   if (!id) return activateRepo(key);
+  if (!S.getNote(id)) return showHome(); // (its tab is hidden: see resolveTabs)
   if (state.note === id && !state.repo) return renderTabs();
   showPage(id);
 }
@@ -695,7 +697,7 @@ function renderTabs() {
       ${icon(ic)}<span class="tab-label">${esc(label)}</span>
       <button class="tab-x" title="Close tab (Ctrl+W)">${icon('close')}</button>
     </div>`;
-  $('#tabs').innerHTML = home + tabs.list.map(p => (noteOf(p)
+  $('#tabs').innerHTML = home + tabs.list.filter(p => !noteOf(p) || S.getNote(noteOf(p))).map(p => (noteOf(p)
     ? tab(p, noteIcon(noteOf(p)), noteTitle(noteOf(p)), noteTitle(noteOf(p)))
     : tab(p, tabMode(p) === 'explorer' ? 'folder' : 'branch', tabLabel(p), p + (tabs.plain.has(p) ? '\nNot a Git repository' : '')))).join('')
     + `<button class="tab-new" title="Open a folder or a new note (Ctrl+T)">${icon('plus')}</button>`;
@@ -710,9 +712,13 @@ function newTabMenu(x, y, extra = []) {
   const linked = (project?.folders || []).map(f => f.path).filter(p => !tabs.list.includes(p));
   const recent = (store('recent') || []).filter(p => !tabs.list.includes(p) && !linked.includes(p));
   const item = (p, run) => ({ label: `${folderName(p)}  —  ${p}`, run });
-  showMenu(x, y, [
+  const notes = [
     { label: 'New page', run: () => newNote({ space: tabs.space, open: 'tab' }) },
     { label: 'New database', run: () => newDatabase({ space: tabs.space, open: 'tab' }) },
+  ];
+  if (!desktop) return showMenu(x, y, [...notes, ...extra]);
+  showMenu(x, y, [
+    ...notes,
     '-',
     ...linked.map(p => item(p, () => openRepo(p))),
     ...(linked.length ? ['-'] : []),
@@ -827,7 +833,8 @@ let switches = 0;
 async function resolveTabs(list) {
   const out = new Map();
   await Promise.all(list.map(async p => {
-    if (noteOf(p)) return out.set(p, S.getNote(noteOf(p)) ? p : null);
+    // (a note that isn't here keeps its tab, hidden: it may be the account's, or this computer's)
+    if (noteOf(p)) return out.set(p, p);
     const root = await G.repoRoot(p).catch(() => null);
     if (root) { tabs.plain.delete(root); return out.set(p, root); }
     if (!(await isFolder(p))) return out.set(p, null);
@@ -898,7 +905,7 @@ const SYNC = {
 };
 
 function accountButton() {
-  const u = currentUser(), sync = P.syncStatus();
+  const u = currentUser(), sync = syncStatus();
   if (!u) return `<button class="rail-account" title="Sign in to keep your projects in your account">${icon('cloud')}</button>`;
   const pic = userAvatar(u);
   return `<button class="rail-account in" title="${esc(`${userName(u)}${u.email && u.email !== userName(u) ? `\n${u.email}` : ''}\n${SYNC[sync] || ''}`)}">
@@ -909,10 +916,11 @@ function accountButton() {
 // Projects of this computer (kept for when signed out) that the account doesn't have.
 const localOnly = () => P.localProjects().filter(p => !P.getProject(p.id));
 
-function accountMenu(x, y) {
+async function accountMenu(x, y) {
   const u = currentUser();
   const note = label => ({ label, disabled: true, run: () => {} });
   const local = desktop && u ? localOnly() : [];
+  const localNotes = desktop && u ? await S.localOnlyNotes().catch(() => []) : [];
   const files = [
     { label: u ? 'Export the projects of the account…' : 'Export projects…', run: () => exportProjects(P.listProjects()) },
     ...(desktop && u && P.localProjects().length ? [{ label: 'Export the projects of this computer…', run: () => exportProjects(P.localProjects()) }] : []),
@@ -920,9 +928,10 @@ function accountMenu(x, y) {
   ];
   showMenu(x, y, u ? [
     note(`Signed in as ${u.email || userName(u)}`),
-    note(SYNC[P.syncStatus()] || ''),
+    note(SYNC[syncStatus()] || ''),
     '-',
     ...(local.length ? [{ label: `Copy ${plural(local.length, 'project')} of this computer to the account…`, run: copyLocalProjects }] : []),
+    ...(localNotes.length ? [{ label: `Copy ${plural(localNotes.length, 'note')} of this computer to the account…`, run: () => copyLocalNotes(localNotes) }] : []),
     ...files,
     '-',
     { label: 'Sign out', run: () => signOut().catch(e => toast('Could not sign out', 'error', String(e.message || e))) },
@@ -941,6 +950,26 @@ async function copyLocalProjects() {
   const names = local.map(p => `• ${p.name}`).join('\n');
   if (!(await confirmBox('Copy to the account', `Copy these projects of this computer to your account?\n\n${names}\n\nThey stay on this computer too.`, 'Copy', false))) return;
   added(P.importProjects(local), local.length);
+}
+
+// The notes of this computer are copied to the account, with their text and images (they also stay
+// here, for when signed out).
+async function copyLocalNotes(local) {
+  const missing = new Set(local.map(n => n.space).filter(s => s !== 'home' && !P.getProject(s)));
+  const warn = missing.size ? `\n\nSome of them belong to ${plural(missing.size, 'project')} not in the account yet: copy the projects first, or those notes won't show.` : '';
+  if (!(await confirmBox('Copy to the account', `Copy ${plural(local.length, 'note')} of this computer (pages and databases, with their text and images) to your account?${warn}\n\nThey stay on this computer too.`, 'Copy', false))) return;
+  const progress = document.createElement('div');
+  progress.className = 'import-progress';
+  progress.innerHTML = '<span class="spinner"></span><span>Copying the notes…</span>';
+  document.body.append(progress);
+  try {
+    const n = await S.copyLocalNotes((done, total) => (progress.lastElementChild.textContent = `Copying the notes… ${done} of ${total}`));
+    toast(`Copied ${plural(n, 'note')} to your account`, 'ok');
+  } catch (e) {
+    toast('Could not copy the notes', 'error', String(e.message || e));
+  } finally {
+    progress.remove();
+  }
 }
 
 function added(n, total) {
@@ -1010,12 +1039,18 @@ const applyGate = () => document.documentElement.classList.toggle('signed-out', 
 
 // Signed in or out: the projects shown are the account's, or the ones kept on this device (which
 // signing in never changes: they can be copied to the account from the account menu).
-function accountChanged(user) {
+async function accountChanged(user) {
   applyGate();
   P.useAccount(user);
-  if (!user) return;
-  toast(`Signed in as ${user.email || userName(user)}`, 'ok',
-    desktop && P.localProjects().length ? 'The projects of this computer stay here: to copy them to your account, open the account menu (bottom left).' : '');
+  if (user) {
+    toast(`Signed in as ${user.email || userName(user)}`, 'ok',
+      desktop ? 'The projects and notes of this computer stay here: to copy them to your account, open the account menu (bottom left).' : '');
+  }
+  closePeek();
+  await S.useAccount(user);
+  // a note open in a tab is shown again from where the notes are now (or the pinned tab, if it isn't there)
+  if (state.note) showPage(S.getNote(state.note) ? state.note : null);
+  else renderTabs();
 }
 
 // The projects changed elsewhere (or the account did): the ones deleted take their notes to Home,
@@ -1709,7 +1744,7 @@ function renderWelcome() {
   const projects = P.listProjects();
   $('#main').innerHTML = `<div class="welcome">${LOGO}
     <h1>Roru Dashboard</h1>
-    <p>${desktop ? 'Projects, notes and Git in one place.' : 'Your projects. Git, folders and notes are in the desktop app.'}</p>
+    <p>${desktop ? 'Projects, notes and Git in one place.' : 'Your projects and notes. Git and the folders are in the desktop app.'}</p>
     <div class="welcome-acts">${desktop ? '<button class="btn primary" id="w-open">Open repository or folder…</button>' : ''}<button class="btn ${desktop ? '' : 'primary'}" id="w-project">New project…</button></div>
     <div class="welcome-notes"></div>
     ${projects.length ? `<div class="recent"><h4>Projects</h4>${projects.map(p => `<div class="recent-item proj-item" data-project="${esc(p.id)}">
@@ -1719,7 +1754,7 @@ function renderWelcome() {
   </div>`;
   if (desktop) $('#w-open').onclick = openRepoDialog;
   $('#w-project').onclick = newProject;
-  if (desktop) renderNotesPanel($('.welcome-notes'), 'home');
+  renderNotesPanel($('.welcome-notes'), 'home');
   document.querySelectorAll('.proj-item').forEach(el => {
     el.onclick = () => switchSpace(el.dataset.project);
     el.oncontextmenu = e => { e.preventDefault(); showMenu(e.clientX, e.clientY, projectMenuItems(P.getProject(el.dataset.project))); };
@@ -3151,12 +3186,13 @@ initDashboard({
   open: path => openRepo(path),
   pickFolders, toast, showMenu, modal, copy, renameProject,
   changed: projectsChanged,
-  renderNotes: (el, id) => desktop && renderNotesPanel(el, id),
+  renderNotes: (el, id) => renderNotesPanel(el, id),
 });
 bindRail();
 
 // Opens what a mention in a note points to: a file in the explorer, a commit or a branch in the history.
 async function revealMention({ kind, id, repo }) {
+  if (!desktop) return toast('Files, commits and branches open in the desktop app, which has the folders');
   if (!repo || !(await isFolder(repo))) return toast('Folder not found', 'error', repo || '');
   await openRepo(repo);
   if (kind === 'file') {
@@ -3175,18 +3211,19 @@ S.onNotesChange(() => {
 });
 
 P.onProjectsChange(projectsChangedElsewhere);
-P.onSyncStatus(paintAccount);
+onSyncStatus(paintAccount);
 onAccount(accountChanged);
 
 (async () => {
   P.useAccount(await initAccount().catch(e => { toast('Could not reach your account', 'error', String(e.message || e)); return null; }));
   applyGate();
   if (signInFailure()) toast('Could not sign in — try again', 'error', signInFailure());
-  if (desktop) await initNotesUi({
+  await initNotesUi({
     space: () => tabs.space,
     spaceName: id => P.getProject(id)?.name || 'Home',
     spaces: () => ['home', ...P.listProjects().map(p => p.id)],
-    folders: () => currentProject()?.folders.map(f => f.path) ?? tabs.list.filter(k => !noteOf(k)),
+    // (the web page has no folders to mention or to take branches from)
+    folders: () => (!desktop ? [] : currentProject()?.folders.map(f => f.path) ?? tabs.list.filter(k => !noteOf(k))),
     activeNote: () => state.note,
     openTab: (id, opts) => openNoteTab(id, opts),
     closeTabs: closeNoteTabs,

@@ -7,6 +7,7 @@
 // Folders are local paths like "C:/Projects/api" ({ path }), the same keys the tabs use.
 import { store } from './util.js';
 import { db } from './account.js';
+import { createMirror, clone } from './mirror.js';
 
 export const COLORS = ['#7aa2f7', '#9ece6a', '#f7768e', '#e0af68', '#bb9af7', '#2ac3de', '#ff9e64', '#73daca'];
 
@@ -14,7 +15,7 @@ export const COLORS = ['#7aa2f7', '#9ece6a', '#f7768e', '#e0af68', '#bb9af7', '#
 export const localProjects = () => (store('projects') || []).filter(p => p?.id);
 
 let projects = localProjects();
-const save = () => (account ? write() : store('projects', projects));
+const save = () => (mirror.active ? mirror.write() : store('projects', projects));
 
 const newId = () => crypto.randomUUID?.() ?? Date.now().toString(36) + Math.random().toString(36).slice(2);
 
@@ -197,61 +198,18 @@ export function importProjects(list) {
 //
 // Each project is a row of the `projects` table and each link a row of `links` (see
 // supabase/schema.sql): { id, position (its order), data (its other fields) }, links also with their
-// project_id. `rows` has them as they are known here: the account's, plus the changes made here.
-// A change is found by comparing the projects with `rows` (so every function above just calls
-// save()), and is written right away; until it is, it waits in `outbox`, kept on this device with
-// the rows, so the changes made offline are written when the network comes back. Changes made
-// elsewhere come in live (Realtime) and the projects are built again from the rows; a change made
-// here and not written yet wins over them. Everything is read again whenever the live channel
-// (re)connects, which brings in what was missed while offline.
+// project_id. mirror.js keeps them live; every function above just calls save().
 
-const TABLES = ['projects', 'links'];
-
-let account = null;          // the signed-in user whose projects these are, or null
-let rows = emptyRows();
-let outbox = new Map();      // "table:id" -> { table, id, row } (row null: deleted)
-let channel = null;
-let status = null;           // null (signed out), 'syncing', 'synced' or 'offline'
-let flushing = null, retry = null, delay = 0;
-const echoes = new Map();    // "table:id" -> rows written from here lately (their echo is ignored)
 const listeners = new Set();
-const statusListeners = new Set();
-
-function emptyRows() { return { projects: new Map(), links: new Map() }; }
-
-// JSON with the keys of every object sorted, to compare rows (the database reorders their keys).
-const canon = v => JSON.stringify(v ?? null, (_, x) => (x && typeof x === 'object' && !Array.isArray(x)
-  ? Object.fromEntries(Object.keys(x).sort().map(k => [k, x[k]])) : x));
-const clone = v => JSON.parse(JSON.stringify(v ?? {}));
-const byPosition = (a, b) => a.position - b.position || (a.id < b.id ? -1 : 1);
 
 // `fn({ removed })` runs after the projects changed elsewhere, or were read again from the account
 // (signing in or out); `removed` has the ids of the projects that were deleted in the account.
 export const onProjectsChange = fn => listeners.add(fn);
-export const syncStatus = () => status;
-export const onSyncStatus = fn => statusListeners.add(fn);
 
-function setStatus(s) {
-  if (s === status) return;
-  status = s;
-  statusListeners.forEach(fn => fn(s));
-}
-
-let told = null; // projects deleted elsewhere, told at once when a burst of changes is over
-function tell(removed = []) {
-  if (!told) {
-    told = new Set();
-    setTimeout(() => {
-      const ids = [...told];
-      told = null;
-      listeners.forEach(fn => fn({ removed: ids }));
-    }, 30);
-  }
-  removed.forEach(id => told.add(id));
-}
+const byPosition = (a, b) => a.position - b.position || (a.id < b.id ? -1 : 1);
 
 function rowsOf(list) {
-  const out = emptyRows();
+  const out = { projects: new Map(), links: new Map() };
   list.forEach((p, i) => {
     const { id, links = [], ...data } = p;
     out.projects.set(id, { id, position: i, data: clone(data) });
@@ -265,7 +223,7 @@ function rowsOf(list) {
 
 // The projects from the rows. The project objects are kept (updated in place), so the ones the UI
 // holds stay current. Links whose project is gone are left out (and deleted by the next write).
-function build() {
+function build(rows) {
   const old = new Map(projects.map(p => [p.id, p]));
   const linksOf = new Map();
   for (const l of [...rows.links.values()].sort(byPosition)) {
@@ -279,162 +237,17 @@ function build() {
   });
 }
 
-const fromDb = (table, r) => ({
-  id: r.id, position: r.position, data: typeof r.data === 'string' ? JSON.parse(r.data) : r.data || {},
-  ...(table === 'links' ? { project_id: r.project_id } : {}),
+const mirror = createMirror({
+  name: 'account', label: 'projects',
+  tables: { projects: 'id, position, data', links: 'id, project_id, position, data' },
+  rowsOf: () => rowsOf(projects),
+  build,
+  changed: ({ removed }) => listeners.forEach(fn => fn({ removed: removed.projects || [] })),
 });
-
-// Kept on this device, so the projects show up at once next time, and offline.
-function keep() {
-  if (!account) return;
-  store(`account.${account.id}`, {
-    rows: Object.fromEntries(TABLES.map(t => [t, [...rows[t].values()]])),
-    outbox: [...outbox.values()],
-  });
-}
-
-// A change made here: what differs from the rows goes to the outbox, and is written.
-function write() {
-  const next = rowsOf(projects);
-  for (const t of TABLES) {
-    for (const [id, row] of next[t]) if (canon(row) !== canon(rows[t].get(id))) outbox.set(`${t}:${id}`, { table: t, id, row });
-    for (const id of rows[t].keys()) if (!next[t].has(id)) outbox.set(`${t}:${id}`, { table: t, id, row: null });
-  }
-  rows = next;
-  keep();
-  flush();
-}
-
-function echo(key, row) {
-  if (!echoes.has(key)) echoes.set(key, new Set());
-  const c = canon(row);
-  echoes.get(key).add(c);
-  setTimeout(() => { echoes.get(key)?.delete(c); if (!echoes.get(key)?.size) echoes.delete(key); }, 15000);
-}
-
-const check = r => { if (r.error) throw r.error; };
-
-// Writes the outbox: one request per table for the rows written, one for the ones deleted.
-function flush() {
-  if (flushing || !account || !outbox.size) return flushing;
-  const user = account;
-  flushing = (async () => {
-    const batch = [...outbox.entries()];
-    const of = (t, written) => batch.map(([, o]) => o).filter(o => o.table === t && !!o.row === written);
-    setStatus('syncing');
-    try {
-      for (const t of TABLES) {
-        const up = of(t, true).map(o => o.row);
-        if (up.length) check(await db.from(t).upsert(up));
-      }
-      for (const t of [...TABLES].reverse()) {
-        const ids = of(t, false).map(o => o.id);
-        if (ids.length) check(await db.from(t).delete().in('id', ids));
-      }
-    } catch (e) {
-      // offline, or the account refused it: tried again a little later, or when the network is back
-      console.warn('Could not write the projects to the account', e);
-      if (account !== user) return;
-      delay = Math.min(60000, delay ? delay * 2 : 2000);
-      clearTimeout(retry);
-      retry = setTimeout(flush, delay);
-      setStatus('offline');
-      return;
-    } finally {
-      flushing = null;
-    }
-    if (account !== user) return;
-    for (const [key, o] of batch) {
-      if (o.row) echo(key, o.row);
-      if (outbox.get(key) === o) outbox.delete(key);
-    }
-    delay = 0;
-    keep();
-    if (outbox.size) flush();
-    else setStatus('synced');
-  })();
-  return flushing;
-}
-
-// A change that came from elsewhere (or the echo of one made here).
-function remote(table, { eventType, new: row, old }) {
-  const id = (eventType === 'DELETE' ? old : row)?.id;
-  if (!account || !id) return;
-  const key = `${table}:${id}`;
-  if (outbox.has(key)) return; // changed here too: this device's change is on its way, and wins
-  if (eventType === 'DELETE') {
-    if (!rows[table].delete(id)) return;
-  } else {
-    const r = fromDb(table, row), c = canon(r);
-    if (c === canon(rows[table].get(id)) || echoes.get(key)?.has(c)) return;
-    rows[table].set(id, r);
-  }
-  build();
-  keep();
-  tell(table === 'projects' && eventType === 'DELETE' ? [id] : []);
-}
-
-// Reads every row of the account again; the changes not written yet stay on top of them.
-async function resync() {
-  const user = account;
-  if (!user) return;
-  setStatus('syncing');
-  const [ps, ls] = await Promise.all([
-    db.from('projects').select('id, position, data'),
-    db.from('links').select('id, project_id, position, data'),
-  ]).catch(e => [{ error: e }, {}]);
-  if (account !== user) return;
-  if (ps.error || ls.error) {
-    console.warn('Could not read the projects of the account', ps.error || ls.error);
-    return setStatus('offline');
-  }
-  const next = emptyRows();
-  ps.data.forEach(r => next.projects.set(r.id, fromDb('projects', r)));
-  ls.data.forEach(r => next.links.set(r.id, fromDb('links', r)));
-  for (const o of outbox.values()) {
-    if (o.row) next[o.table].set(o.id, o.row);
-    else next[o.table].delete(o.id);
-  }
-  const removed = [...rows.projects.keys()].filter(id => !next.projects.has(id));
-  const same = TABLES.every(t => rows[t].size === next[t].size && [...next[t]].every(([id, r]) => canon(r) === canon(rows[t].get(id))));
-  rows = next;
-  if (!same) build();
-  keep();
-  if (!same) tell(removed);
-  if (outbox.size) flush();
-  else setStatus('synced');
-}
 
 // Shows the projects of the account of `user` (signed in), or the ones kept on this device (null).
 export function useAccount(user) {
-  if (channel) { db.removeChannel(channel); channel = null; }
-  clearTimeout(retry);
-  account = user && db ? user : null;
-  outbox = new Map();
-  rows = emptyRows();
-  echoes.clear();
-  delay = 0;
-  if (!account) {
-    projects = localProjects();
-    setStatus(null);
-    tell();
-    return;
-  }
-  const cache = store(`account.${account.id}`) || {};
-  for (const t of TABLES) (cache.rows?.[t] || []).forEach(r => rows[t].set(r.id, r));
-  (cache.outbox || []).forEach(o => outbox.set(`${o.table}:${o.id}`, o));
-  projects = []; // (the objects of this device's projects are not reused for the account's)
-  build();
-  tell();
-  setStatus('syncing');
-  channel = db.channel(`projects:${account.id}`)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, p => remote('projects', p))
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'links' }, p => remote('links', p))
-    .subscribe(s => {
-      // (re)connected: what changed meanwhile is read, and what changed here is written
-      if (s === 'SUBSCRIBED') resync();
-      else if (s === 'CHANNEL_ERROR' || s === 'TIMED_OUT') setStatus('offline');
-    });
+  // (the objects of this device's projects are not reused for the account's)
+  projects = user && db ? [] : localProjects();
+  mirror.use(user);
 }
-
-addEventListener('online', () => { if (account) { delay = 0; flush(); resync(); } });

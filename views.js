@@ -6,6 +6,7 @@
 import * as S from './notes-store.js';
 import * as G from './git.js';
 import { esc, icon, folderName } from './util.js';
+import { desktop } from './platform.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -260,8 +261,9 @@ function refsOf(repo, { fresh = false } = {}) {
   return entry.promise;
 }
 
-// What is known now (the views repaint when a read finishes).
+// What is known now (the views repaint when a read finishes). The web page has no Git: nothing.
 function knownRefs(repo) {
+  if (!desktop) return undefined;
   refsOf(repo);
   return refsCache.get(repo)?.refs;
 }
@@ -300,6 +302,10 @@ async function branchPicker(anchor, propId, ids) {
   closePicker();
   const el = popup(anchor, 'Search for a branch');
   const q = $('.opt-q', el);
+  if (!desktop) {
+    $('.opt-list', el).innerHTML = '<div class="opt-hint">Branches are picked in the desktop app, which has the repositories</div>';
+    return;
+  }
   $('.opt-list', el).innerHTML = '<div class="opt-hint">Reading the branches…</div>';
   const repos = (await Promise.all(host.folders().map(async f => ({ repo: f, refs: await refsOf(f) })))).filter(r => r.refs);
   if (picker?.el !== el) return;

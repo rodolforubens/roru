@@ -2,13 +2,15 @@
 // to-do lists, quotes, code blocks, links, images, tables and database blocks, with Markdown-like
 // shortcuts ("# ", "- ", "[] "...), a "/" menu to change or insert blocks, and "@" mentions of
 // notes, files, commits and branches.
-import { Editor, Extension, Node, StarterKit, TaskList, TaskItem, Placeholder, Mention, Image, TableKit, Markdown, Suggestion, PluginKey } from './vendor/tiptap.js';
+import { Editor, Extension, Node, StarterKit, TaskList, TaskItem, Placeholder, Mention, Image, TableKit, Markdown, Suggestion, PluginKey, Collaboration, getSchema } from './vendor/tiptap.js';
 import { esc, icon } from './util.js';
 
-// The blocks and marks of a note's content.
+// The blocks and marks of a note's content. With a Yjs document (`opts.ydoc`) the undo history is
+// the collaboration's own.
 const contentExtensions = (opts = {}) => [
   StarterKit.configure({
     link: { openOnClick: false, autolink: true, linkOnPaste: true, defaultProtocol: 'https' },
+    ...(opts.ydoc ? { undoRedo: false } : {}),
   }),
   TaskList,
   TaskItem.configure({ nested: true }),
@@ -54,14 +56,16 @@ function DatabaseNode(opts) {
 }
 
 // Images keep where they are as `src`: a web address, or a file of the notes ("files/<note>/<name>")
-// that `fileUrl(src)` turns into an address the webview can load.
+// that `fileUrl(src)` turns into an address the webview can load (or a promise of one).
 function ImageNode(opts) {
   if (!opts.fileUrl) return Image.configure({ inline: true });
   return Image.configure({ inline: true }).extend({
     addNodeView() {
       return ({ node }) => {
         const img = document.createElement('img');
-        img.src = opts.fileUrl(node.attrs.src);
+        const url = opts.fileUrl(node.attrs.src);
+        if (url?.then) url.then(u => { if (u) img.src = u; });
+        else img.src = url;
         img.alt = node.attrs.alt || '';
         if (node.attrs.title) img.title = node.attrs.title;
         img.draggable = false;
@@ -78,16 +82,23 @@ export function parseMarkdown(md) {
   return parser.markdown.parse(md);
 }
 
-// `opts`: { content, onChange(doc), mentions(query) -> Promise<items>, mentionView(attrs) -> { icon, label, title },
+// The schema of a note's content: every block and mark it can have, mentions included (to turn
+// its JSON into a document).
+let schema = null;
+export const noteSchema = () => (schema ||= getSchema([...contentExtensions(), MentionNode({ mentionView: () => ({}) })]));
+
+// `opts`: { content, onChange(doc) | ydoc (a Yjs document the editor edits and that saves itself),
+// mentions(query) -> Promise<items>, mentionView(attrs) -> { icon, label, title },
 // openMention(attrs, event), openLink(href), fileUrl(src), renderDatabase(el, id, { remove }),
 // commands: extra "/" items [{ title, hint, icon, run(editor, range) }] }.
 // Mention items are { kind, id, repo, label, detail }.
 export function createEditor(el, opts) {
   return new Editor({
     element: el,
-    content: opts.content || '',
+    ...(opts.ydoc ? {} : { content: opts.content || '' }),
     extensions: [
       ...contentExtensions(opts),
+      ...(opts.ydoc ? [Collaboration.configure({ document: opts.ydoc, field: 'default' })] : []),
       Placeholder.configure({
         placeholder: ({ node }) => (node.type.name === 'heading' ? `Heading ${node.attrs.level}` : "Type '/' for commands, '@' to mention"),
       }),

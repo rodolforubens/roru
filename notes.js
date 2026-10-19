@@ -12,7 +12,7 @@ import { toMarkdown } from './markdown.js';
 import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView } from './views.js';
 import { importNotion } from './notion-import.js';
 import { esc, icon, store, folderName, plural, debounce } from './util.js';
-import { invoke } from './platform.js';
+import { desktop, invoke } from './platform.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -43,7 +43,9 @@ export async function initNotesUi(h) {
     showMenu: h.showMenu, modal: h.modal, confirmBox: h.confirmBox, toast: h.toast,
   });
   await S.initNotes();
-  S.onNotesChange(({ ids }) => {
+  S.onNotesChange(({ ids, removed }) => {
+    // deleted elsewhere: their tabs close
+    if (removed?.length) host.closeTabs(removed);
     for (const t of trees) if (t.el.isConnected) paintTree(t); else trees.delete(t);
     for (const p of pages) if (p.el.isConnected) paintMeta(p); else destroyPage(p);
     repaintViews();
@@ -197,7 +199,15 @@ async function markdownOf(id) {
   });
 }
 
+// The web page saves a file by downloading it.
+function download(name, text, type = 'text/markdown') {
+  const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([text], { type })), download: name });
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
 async function exportNote(id) {
+  if (!desktop) return download(fileName(noteTitle(id)) + '.md', await markdownOf(id));
   try {
     const path = await tauri.dialog.save({ title: 'Export as Markdown', defaultPath: fileName(noteTitle(id)) + '.md', filters: [{ name: 'Markdown', extensions: ['md'] }] });
     if (!path) return;
@@ -236,20 +246,24 @@ export async function exportSpace(space = host.space()) {
 
 // Imports a Notion export (.zip, "Markdown & CSV") into the space, or into a note as its sub-pages.
 async function importFromNotion(space, parent) {
-  let path;
+  let path, picked;
   try {
-    path = await tauri.dialog.open({ title: 'Import a Notion export', multiple: false, directory: false, filters: [{ name: 'Notion export (Markdown & CSV)', extensions: ['zip'] }] });
+    if (desktop) path = await tauri.dialog.open({ title: 'Import a Notion export', multiple: false, directory: false, filters: [{ name: 'Notion export (Markdown & CSV)', extensions: ['zip'] }] });
+    else {
+      const input = Object.assign(document.createElement('input'), { type: 'file', accept: '.zip,application/zip' });
+      picked = await new Promise(done => { input.onchange = () => done(input.files[0]); input.click(); });
+    }
   } catch (e) {
     return host.toast('Could not open the file dialog', 'error', String(e));
   }
-  if (!path) return;
+  if (!path && !picked) return;
   const progress = document.createElement('div');
   progress.className = 'import-progress';
   progress.innerHTML = '<span class="spinner"></span><span>Importing from Notion…</span>';
   document.body.append(progress);
   const say = text => (progress.lastElementChild.textContent = text);
   try {
-    const buffer = await invoke('read_bytes', { path });
+    const buffer = picked ? await picked.arrayBuffer() : await invoke('read_bytes', { path });
     const r = await importNotion(buffer, { space, parent, onProgress: (done, total) => say(`Importing from Notion… ${done} of ${total}`) });
     host.toast(`Imported ${plural(r.pages, 'page')} and ${plural(r.images, 'image')} from Notion`, 'ok',
       r.missing ? `${plural(r.missing, 'image was', 'images were')} not in the export` : '');
@@ -274,7 +288,7 @@ export function noteMenuItems(id, ctx = 'list') {
     ...(db ? [{ label: 'Add an item', run: () => newNote({ space: n.space, parent: id }) }] : [
       { label: 'Add a page inside', run: () => newNote({ space: n.space, parent: id }) },
       { label: 'Add a database inside', run: () => newDatabase({ space: n.space, parent: id, open: 'none' }) },
-      ...(n.space === host.space() ? [{ label: 'Create a branch for this note…', run: () => createBranchFor(id) }] : []),
+      ...(desktop && n.space === host.space() ? [{ label: 'Create a branch for this note…', run: () => createBranchFor(id) }] : []),
       ...(S.databasesOf(id).length ? [{ label: `Full-width databases${S.wideViewsOf(id) ? '  ✓' : ''}`, run: () => S.setWideViews(id, !S.wideViewsOf(id)) }] : []),
       { label: 'Import from Notion here…', run: () => importFromNotion(n.space, id) },
     ]),
@@ -493,7 +507,7 @@ function mountPage(container, id, place) {
     host.showMenu(e.clientX, e.clientY, noteMenuItems(link.dataset.open));
   });
 
-  if (!db) S.loadContent(id).then(doc => {
+  if (!db) S.openContent(id).then(src => {
     if (!page.alive) return;
     // a database made here shows where "/" was typed
     const database = view => (editor, range) => {
@@ -502,8 +516,7 @@ function mountPage(container, id, place) {
       editor.chain().focus().deleteRange(range).insertContent({ type: 'database', attrs: { id: d.id } }).run();
     };
     page.editor = createEditor($('.np-editor', el), {
-      content: doc,
-      onChange: json => S.saveContent(id, json),
+      ...(src.ydoc ? { ydoc: src.ydoc } : { content: src.content, onChange: json => S.saveContent(id, json) }),
       mentions: q => mentionItems(q, id),
       mentionView,
       fileUrl: S.fileUrl,
@@ -533,6 +546,8 @@ function mountPage(container, id, place) {
       e.preventDefault();
       page.editor.commands.focus('end');
     });
+  }).catch(e => {
+    if (page.alive) $('.np-editor', el).innerHTML = `<div class="np-failed">${icon('alert')}Could not open the text of this page — ${esc(String(e.message || e))}</div>`;
   });
 
   paintMeta(page);
@@ -543,8 +558,8 @@ function destroyPage(page) {
   if (!page.alive) return;
   page.alive = false;
   pages.delete(page);
-  S.flushNotes();
   page.editor?.destroy();
+  S.closeContent(page.id);
 }
 
 function focusPageTitle(page) {
@@ -649,7 +664,7 @@ export function renderNotesPanel(el, space) {
       ...Object.entries(OPEN_IN).map(([m, name]) => ({ label: `Open notes in: ${name}${topOpen() === m ? '  ✓' : ''}`, run: () => store('notesOpen', m) })),
       '-',
       { label: 'Import from Notion…', run: () => importFromNotion(space, null) },
-      { label: 'Export all notes as Markdown…', run: () => exportSpace(space) },
+      ...(desktop ? [{ label: 'Export all notes as Markdown…', run: () => exportSpace(space) }] : []),
     ]);
   });
   mountTree($('.nt-body', el), space, { sidebar: false });
