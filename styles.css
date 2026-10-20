@@ -1697,6 +1697,7 @@ html.mobile .np-doc { padding: 14px 16px 40vh; }
 html.mobile .np-title { font-size: 28px; }
 html.mobile .dash-head { padding: 16px 16px 12px; }
 html.mobile .dash-links { margin: 0 16px 24px; grid-template-columns: 1fr; }
+html.mobile .dash-notes { margin: 0 16px 24px; }
 html.mobile .bd { scroll-snap-type: x mandatory; }
 html.mobile .bd-col { width: calc(100vw - 72px); scroll-snap-align: start; }
 /* databases take the whole width of the phone: their bar and lists keep the text's margin, and
@@ -1747,3 +1748,13 @@ html.mobile.typing #mtools {
 .mt-btn.on { background: var(--sel); color: var(--text); }
 .mt-btn:active { background: var(--hover); }
 .mt-btn[data-t="done"] { margin-left: auto; color: var(--accent); }
+
+/* a space's notes as cards (like the links): see mountCards in notes.js */
+.nt-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
+.nt-mark .ic { width: 28px; height: 28px; }
+.nt-card .lk-title.untitled { color: var(--text-3); }
+.nt-card .lk-site .ic { width: 13px; height: 13px; }
+.nt-card.drop-before { box-shadow: -3px 0 0 var(--accent); }
+.nt-card.drop-after { box-shadow: 3px 0 0 var(--accent); }
+html.mobile .nt-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+html.mobile .nt-card .lk-body { padding: 8px 10px 9px; }

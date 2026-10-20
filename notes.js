@@ -5,15 +5,15 @@
 // below as it was. Pages nest in other pages through their text (a link to the nested page, or a
 // database block); databases show in the tree as one item. Tabs and spaces belong to app.js (see
 // initNotesUi); the table and board views and the properties are in views.js.
-import * as S from './notes-store.js?v=8088795';
-import * as G from './git.js?v=8088795';
-import { createEditor, pickImages, addImages } from './editor.js?v=8088795';
-import { pickEmoji } from './emoji.js?v=8088795';
-import { toMarkdown } from './markdown.js?v=8088795';
-import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView } from './views.js?v=8088795';
-import { importNotion } from './notion-import.js?v=8088795';
-import { esc, icon, store, folderName, plural, debounce, shrinkImage } from './util.js?v=8088795';
-import { desktop, invoke, isMobile } from './platform.js?v=8088795';
+import * as S from './notes-store.js?v=ceecca2';
+import * as G from './git.js?v=ceecca2';
+import { createEditor, pickImages, addImages } from './editor.js?v=ceecca2';
+import { pickEmoji } from './emoji.js?v=ceecca2';
+import { toMarkdown } from './markdown.js?v=ceecca2';
+import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView } from './views.js?v=ceecca2';
+import { importNotion } from './notion-import.js?v=ceecca2';
+import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative } from './util.js?v=ceecca2';
+import { desktop, invoke, isMobile } from './platform.js?v=ceecca2';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -49,6 +49,7 @@ export async function initNotesUi(h) {
     // deleted elsewhere: their tabs close
     if (removed?.length) host.closeTabs(removed);
     for (const t of trees) if (t.el.isConnected) paintTree(t); else trees.delete(t);
+    for (const p of cardPanels) if (p.el.isConnected) paintCards(p); else cardPanels.delete(p);
     for (const p of pages) if (p.el.isConnected) paintMeta(p); else destroyPage(p);
     repaintViews();
     // mentions of renamed notes show their new title
@@ -699,13 +700,19 @@ export function renderNoteTree() {
 }
 
 // The pages and databases of a space as a section of a page (dashboard, start page): they open in a peek.
+// A space's notes show as cards (like the links of a dashboard: a cover, the title and the start of
+// the text) or as their tree; projects show cards and Home its tree, until changed in the panel's menu.
+const layoutOf = space => store('notesLayout')?.[space] || (space === 'home' ? 'list' : 'cards');
+const setLayout = (space, layout) => store('notesLayout', { ...store('notesLayout'), [space]: layout });
+
 export function renderNotesPanel(el, space) {
+  const cards = layoutOf(space) === 'cards';
   el.innerHTML = `<div class="nt-panel">
     <div class="nt-panel-head"><h2>Notes</h2><span class="spacer"></span>
       <button class="btn-sm" data-nt="page">${icon('plus')}Page</button>
       <button class="btn-sm" data-nt="database">${icon('table')}Database</button>
       <button class="nt-btn" data-nt="menu" title="More">${icon('more')}</button></div>
-    <div class="nt-body nt-tree"></div>
+    <div class="nt-body ${cards ? 'nt-cards' : 'nt-tree'}"></div>
   </div>`;
   el.querySelector('.nt-panel-head').addEventListener('click', e => {
     const b = e.target.closest('[data-nt]');
@@ -717,6 +724,7 @@ export function renderNotesPanel(el, space) {
       { label: 'New page', run: () => newNote({ space }) },
       { label: 'New database', run: () => newDatabase({ space }) },
       '-',
+      { label: cards ? 'Show as a list' : 'Show as cards', run: () => { setLayout(space, cards ? 'list' : 'cards'); renderNotesPanel(el, space); } },
       // where the notes at the top open, and the ones inside them that open like their parent
       ...Object.entries(OPEN_IN).map(([m, name]) => ({ label: `Open notes in: ${name}${topOpen() === m ? '  ✓' : ''}`, run: () => store('notesOpen', m) })),
       '-',
@@ -724,7 +732,128 @@ export function renderNotesPanel(el, space) {
       ...(desktop ? [{ label: 'Export all notes as Markdown…', run: () => exportSpace(space) }] : []),
     ]);
   });
-  mountTree($('.nt-body', el), space, { sidebar: false });
+  if (cards) mountCards($('.nt-body', el), space);
+  else mountTree($('.nt-body', el), space, { sidebar: false });
+}
+
+// ---------- the notes as cards ----------
+
+const cardPanels = new Set(); // { el, space }
+const previews = new Map();   // note id -> { updated, cover, text } (from its text, read once per change)
+
+// A hue from the title, for the cards with no picture (like the links).
+const hueOf = text => [...(text || 'x')].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
+
+function mountCards(el, space) {
+  const panel = { el, space };
+  cardPanels.add(panel);
+  paintCards(panel);
+  el.addEventListener('click', e => {
+    const card = e.target.closest('.nt-card');
+    if (e.target.closest('[data-nt="add-page"]')) return newNote({ space });
+    if (!card) return;
+    const more = e.target.closest('.lk-more');
+    if (more) { const r = more.getBoundingClientRect(); return host.showMenu(r.right - 220, r.bottom + 4, noteMenuItems(card.dataset.note)); }
+    openNote(card.dataset.note);
+  });
+  el.addEventListener('contextmenu', e => {
+    const card = e.target.closest('.nt-card');
+    if (!card) return;
+    e.preventDefault();
+    host.showMenu(e.clientX, e.clientY, noteMenuItems(card.dataset.note));
+  });
+  // cards are dragged to another place; a line shows where the dragged one will land
+  let dragging = null;
+  const clear = () => el.querySelectorAll('.drop-before, .drop-after').forEach(x => x.classList.remove('drop-before', 'drop-after'));
+  const after = (card, e) => { const r = card.getBoundingClientRect(); return e.clientX > r.left + r.width / 2; };
+  el.addEventListener('dragstart', e => {
+    const card = e.target.closest?.('.nt-card');
+    if (!card) return;
+    dragging = card.dataset.note;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', dragging);
+    setTimeout(() => card.classList.add('dragging'));
+  });
+  el.addEventListener('dragover', e => {
+    const card = dragging && e.target.closest('.nt-card');
+    if (!card) return;
+    e.preventDefault();
+    clear();
+    if (card.dataset.note !== dragging) card.classList.add(after(card, e) ? 'drop-after' : 'drop-before');
+  });
+  el.addEventListener('drop', e => {
+    const card = dragging && e.target.closest('.nt-card');
+    if (!card) return;
+    e.preventDefault();
+    const cards = [...el.querySelectorAll('.nt-card')];
+    const before = after(card, e) ? cards[cards.indexOf(card) + 1]?.dataset.note ?? null : card.dataset.note;
+    if (card.dataset.note !== dragging && before !== dragging) S.moveNote(dragging, null, before);
+    dragging = null;
+    clear();
+  });
+  el.addEventListener('dragend', () => { dragging = null; clear(); el.querySelectorAll('.dragging').forEach(x => x.classList.remove('dragging')); });
+}
+
+function paintCards(panel) {
+  const notes = S.childrenOf(panel.space, null);
+  panel.el.innerHTML = notes.map(cardHtml).join('')
+    + `<button class="lk-add" data-nt="add-page">${icon('plus')}<span>Add a page</span></button>`;
+  // the covers and the start of the text come as each note's text is read
+  for (const n of notes) {
+    const hit = previews.get(n.id);
+    if (hit?.updated === n.updated) fillCard(panel.el, n.id, hit);
+    else previewOf(n.id).then(p => fillCard(panel.el, n.id, p), () => {});
+  }
+}
+
+function cardHtml(n) {
+  const db = n.kind === 'database', title = n.title || (db ? 'Untitled database' : 'Untitled');
+  const items = db ? S.childrenOf(n.space, n.id) : [];
+  const meta = db ? `Database · ${plural(items.length, 'item')}` : `Page${n.updated ? ` · edited ${fmtRelative(n.updated / 1000)}` : ''}`;
+  return `<div class="lk-card nt-card" data-note="${esc(n.id)}" draggable="true">
+    <div class="lk-media" style="--h: ${hueOf(title)}"><span class="lk-mark nt-mark">${icon(noteIcon(n.id))}</span></div>
+    <div class="lk-body">
+      <div class="lk-title ${n.title ? '' : 'untitled'}">${esc(title)}</div>
+      <div class="lk-desc">${db ? esc(items.slice(0, 4).map(i => i.title || 'Untitled').join(' · ')) : ''}</div>
+      <div class="lk-site">${icon(db ? 'table' : 'note')}<span class="ellip">${esc(meta)}</span></div>
+    </div>
+    <button class="dash-iconbtn lk-more" title="More actions">${icon('more')}</button>
+  </div>`;
+}
+
+// The first picture of the note's text, and its start as plain text.
+async function previewOf(id) {
+  const n = S.getNote(id);
+  if (!n || n.kind === 'database') return { updated: n?.updated };
+  const doc = await S.loadContent(id);
+  let cover = null;
+  const parts = [];
+  const walk = x => {
+    if (x.type === 'image' && !cover && x.attrs?.src) cover = x.attrs.src;
+    if (x.type === 'text') parts.push(x.text);
+    if (x.type === 'mention') parts.push(`@${x.attrs?.kind === 'note' ? noteTitle(x.attrs.id) : x.attrs?.label ?? ''}`);
+    x.content?.forEach(walk);
+    if (x.type !== 'text' && x.type !== 'mention' && x.type !== 'doc') parts.push(' ');
+  };
+  if (doc) walk(doc);
+  const text = parts.join('').replace(/\s+/g, ' ').trim();
+  const p = { updated: n.updated, cover, text: text.length > 220 ? `${text.slice(0, 219).trimEnd()}…` : text };
+  previews.set(id, p);
+  return p;
+}
+
+function fillCard(el, id, p) {
+  const card = el.querySelector(`.nt-card[data-note="${CSS.escape(id)}"]`);
+  if (!card) return;
+  if (p.text) card.querySelector('.lk-desc').textContent = p.text;
+  if (p.cover && !card.querySelector('.lk-img')) {
+    const img = Object.assign(document.createElement('img'), { className: 'lk-img', alt: '', loading: 'lazy' });
+    img.onerror = () => img.remove();
+    const url = S.fileUrl(p.cover);
+    if (url?.then) url.then(u => { if (u) img.src = u; else img.remove(); });
+    else img.src = url;
+    card.querySelector('.lk-media').append(img);
+  }
 }
 
 // `opts`: { sidebar, parent (the tree's root, null for the top of the space), open(id, event) (for
