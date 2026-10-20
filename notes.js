@@ -5,14 +5,14 @@
 // below as it was. Pages nest in other pages through their text (a link to the nested page, or a
 // database block); databases show in the tree as one item. Tabs and spaces belong to app.js (see
 // initNotesUi); the table and board views and the properties are in views.js.
-import * as S from './notes-store.js?v=6e0ce12';
-import * as G from './git.js?v=6e0ce12';
-import { createEditor } from './editor.js?v=6e0ce12';
-import { toMarkdown } from './markdown.js?v=6e0ce12';
-import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView } from './views.js?v=6e0ce12';
-import { importNotion } from './notion-import.js?v=6e0ce12';
-import { esc, icon, store, folderName, plural, debounce } from './util.js?v=6e0ce12';
-import { desktop, invoke, isMobile } from './platform.js?v=6e0ce12';
+import * as S from './notes-store.js?v=6743703';
+import * as G from './git.js?v=6743703';
+import { createEditor, pickImages, addImages } from './editor.js?v=6743703';
+import { toMarkdown } from './markdown.js?v=6743703';
+import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView } from './views.js?v=6743703';
+import { importNotion } from './notion-import.js?v=6743703';
+import { esc, icon, store, folderName, plural, debounce, shrinkImage } from './util.js?v=6743703';
+import { desktop, invoke, isMobile } from './platform.js?v=6743703';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -111,6 +111,49 @@ async function appendToText(id, node) {
   const end = content.length && content[content.length - 1].type === 'paragraph' && !content[content.length - 1].content?.length ? content.length - 1 : content.length;
   content.splice(end, 0, node);
   S.saveContent(id, { ...doc, content });
+}
+
+// ---------- pictures ----------
+
+// A picture added to a note goes to its files (made smaller first when it is a big photo); returns its
+// `src`. A notice shows while it uploads.
+async function uploadImage(id, file) {
+  const busy = notice('Adding the image…');
+  try {
+    const { bytes, ext } = await shrinkImage(file);
+    // (file names in the account's storage are plain ASCII)
+    const base = file.name.replace(/\.[^.]+$/, '').normalize('NFD').replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'image';
+    return await S.saveFile(id, `${base}-${Date.now().toString(36)}.${ext}`, bytes);
+  } finally {
+    busy.remove();
+  }
+}
+
+const imageOpts = id => ({
+  uploadImage: file => uploadImage(id, file),
+  onError: e => host.toast('Could not add the image', 'error', String(e.message || e)),
+});
+
+// "Add an image…" from a note's menu: where the caret is when the note is open, or else at the end
+// of its text.
+async function addImagesTo(id, files) {
+  const open = [...pages].find(p => p.id === id && p.editor);
+  if (open) return addImages(open.editor, imageOpts(id), files);
+  for (const f of files) {
+    try {
+      appendToText(id, { type: 'paragraph', content: [{ type: 'image', attrs: { src: await uploadImage(id, f), alt: f.name.replace(/\.[^.]+$/, '') } }] });
+    } catch (e) {
+      imageOpts(id).onError(e);
+    }
+  }
+}
+
+function notice(text) {
+  const el = document.createElement('div');
+  el.className = 'import-progress';
+  el.innerHTML = `<span class="spinner"></span><span>${esc(text)}</span>`;
+  document.body.append(el);
+  return el;
 }
 
 // Deleted databases leave the text of the pages they were shown in.
@@ -294,6 +337,7 @@ export function noteMenuItems(id, ctx = 'list') {
     ]),
     ...(n.parent && !S.isDatabase(n.parent) ? [] : [{ label: 'Move to…', run: () => moveToSpace(id) }]),
     '-',
+    ...(db ? [] : [{ label: 'Add an image…', run: () => pickImages(files => addImagesTo(id, files)) }]),
     { label: 'Copy as Markdown', run: async () => host.copy(await markdownOf(id)) },
     { label: 'Export as Markdown…', run: () => exportNote(id) },
     '-',
@@ -523,6 +567,7 @@ function mountPage(container, id, place) {
       mentionView,
       fileUrl: S.fileUrl,
       renderDatabase: (dom, dbId) => renderDatabaseBlock(dom, dbId, page),
+      ...imageOpts(id),
       openMention: (attrs, e) => openMention(page, attrs, e),
       openLink: href => invoke('open_url', { url: href }).catch(err => host.toast('Could not open the link', 'error', String(err))),
       commands: [{

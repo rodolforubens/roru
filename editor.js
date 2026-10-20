@@ -2,8 +2,8 @@
 // to-do lists, quotes, code blocks, links, images, tables and database blocks, with Markdown-like
 // shortcuts ("# ", "- ", "[] "...), a "/" menu to change or insert blocks, and "@" mentions of
 // notes, files, commits and branches.
-import { Editor, Extension, Node, StarterKit, TaskList, TaskItem, Placeholder, Mention, Image, TableKit, Markdown, Suggestion, PluginKey, Collaboration, getSchema } from './vendor/tiptap.js?v=6e0ce12';
-import { esc, icon } from './util.js?v=6e0ce12';
+import { Editor, Extension, Node, StarterKit, TaskList, TaskItem, Placeholder, Mention, Image, TableKit, Markdown, Suggestion, PluginKey, Collaboration, getSchema } from './vendor/tiptap.js?v=6743703';
+import { esc, icon } from './util.js?v=6743703';
 
 // The blocks and marks of a note's content. With a Yjs document (`opts.ydoc`) the undo history is
 // the collaboration's own.
@@ -87,13 +87,70 @@ export function parseMarkdown(md) {
 let schema = null;
 export const noteSchema = () => (schema ||= getSchema([...contentExtensions(), MentionNode({ mentionView: () => ({}) })]));
 
+// The content (JSON) made to fit the schema: what is inline (text, pictures, mentions) but loose among
+// blocks goes in a paragraph. Imports can leave pictures like that, and the collaboration editor
+// would show none of the text then (and drop them at the next change).
+export function fitToSchema(json) {
+  const s = noteSchema();
+  const fit = node => {
+    if (!node.content) return node;
+    const type = s.nodes[node.type];
+    let content = node.content.map(fit);
+    if (type && !type.inlineContent && !type.isLeaf) {
+      const out = [];
+      let run = null;
+      for (const c of content) {
+        if (s.nodes[c.type]?.isInline) {
+          if (!run) out.push(run = { type: 'paragraph', content: [] });
+          run.content.push(c);
+        } else {
+          run = null;
+          out.push(c);
+        }
+      }
+      content = out;
+    }
+    return { ...node, content };
+  };
+  return fit(json);
+}
+
+// ---------- images: pasted, dropped or picked ----------
+
+const imageFiles = list => [...(list || [])].filter(f => f.type.startsWith('image/'));
+
+// Lets the user pick pictures (on a phone: the gallery or the camera).
+export function pickImages(done) {
+  const input = Object.assign(document.createElement('input'), { type: 'file', accept: 'image/*', multiple: true });
+  input.onchange = () => input.files.length && done([...input.files]);
+  input.click();
+}
+
+// Uploads the pictures (`opts.uploadImage(file)` gives each one's `src`) and puts them at `at` (where
+// they were dropped) or at the selection.
+export async function addImages(editor, opts, files, at = null) {
+  const nodes = [];
+  for (const f of files) {
+    try {
+      nodes.push({ type: 'image', attrs: { src: await opts.uploadImage(f), alt: f.name.replace(/\.[^.]+$/, '') } });
+    } catch (e) {
+      opts.onError?.(e);
+    }
+  }
+  if (!nodes.length || editor.isDestroyed) return;
+  const chain = editor.chain().focus();
+  (at == null ? chain : chain.setTextSelection(Math.min(at, editor.state.doc.content.size))).insertContent(nodes).run();
+}
+
 // `opts`: { content, onChange(doc) | ydoc (a Yjs document the editor edits and that saves itself),
 // mentions(query) -> Promise<items>, mentionView(attrs) -> { icon, label, title },
 // openMention(attrs, event), openLink(href), fileUrl(src), renderDatabase(el, id, { remove }),
+// uploadImage(file) -> Promise<src> (pictures pasted, dropped or added with "/image"), onError(error),
 // commands: extra "/" items [{ title, hint, icon, run(editor, range) }] }.
 // Mention items are { kind, id, repo, label, detail }.
 export function createEditor(el, opts) {
-  return new Editor({
+  let editor = null;
+  return (editor = new Editor({
     element: el,
     ...(opts.ydoc ? {} : { content: opts.content || '' }),
     extensions: [
@@ -114,9 +171,24 @@ export function createEditor(el, opts) {
         opts.openLink?.(a.getAttribute('href'));
         return true;
       },
+      // Pictures pasted or dropped in are uploaded and put in the text.
+      handlePaste: (view, event) => {
+        const files = opts.uploadImage ? imageFiles(event.clipboardData?.files) : [];
+        if (!files.length) return false;
+        event.preventDefault();
+        addImages(editor, opts, files);
+        return true;
+      },
+      handleDrop: (view, event, slice, moved) => {
+        const files = !moved && opts.uploadImage ? imageFiles(event.dataTransfer?.files) : [];
+        if (!files.length) return false;
+        event.preventDefault();
+        addImages(editor, opts, files, view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos ?? null);
+        return true;
+      },
     },
     onUpdate: ({ editor }) => opts.onChange?.(editor.getJSON()),
-  });
+  }));
 }
 
 // ---------- mentions ----------
@@ -183,7 +255,11 @@ const BLOCKS = [
 ];
 
 function SlashCommands(opts) {
-  const all = [...BLOCKS, ...(opts.commands || [])];
+  const image = {
+    title: 'Image', hint: 'Upload a picture or a photo', icon: 'image', keys: 'img picture photo upload',
+    run: (e, r) => { e.chain().focus().deleteRange(r).run(); pickImages(files => addImages(e, opts, files)); },
+  };
+  const all = [...BLOCKS, ...(opts.uploadImage ? [image] : []), ...(opts.commands || [])];
   return Extension.create({
     name: 'slashCommands',
     addProseMirrorPlugins() {

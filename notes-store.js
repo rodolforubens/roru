@@ -21,11 +21,11 @@
 // 'board', name, sort, hidden, groupBy, pinned }) to show them.
 // Values by type: text and url a string, number a number, select an option id, multi a list of
 // option ids, date "YYYY-MM-DD", checkbox true, branch { repo (folder path), name }.
-import { desktop, invoke, convertFileSrc } from './platform.js?v=6e0ce12';
-import { db, currentUser } from './account.js?v=6e0ce12';
-import { createMirror, clone, reportStatus } from './mirror.js?v=6e0ce12';
-import { Y, updateYFragment, yDocToProsemirrorJSON } from './vendor/tiptap.js?v=6e0ce12';
-import { noteSchema } from './editor.js?v=6e0ce12';
+import { desktop, invoke, convertFileSrc } from './platform.js?v=6743703';
+import { db, currentUser } from './account.js?v=6743703';
+import { createMirror, clone, reportStatus } from './mirror.js?v=6743703';
+import { Y, updateYFragment, yDocToProsemirrorJSON } from './vendor/tiptap.js?v=6743703';
+import { noteSchema, fitToSchema } from './editor.js?v=6743703';
 
 const SAVE_DELAY = 300; // ms after the last edit (files on this computer)
 
@@ -623,7 +623,14 @@ export function saveContent(id, doc) {
   saveIndex();
 }
 
-const fill = (d, json) => updateYFragment(d.ydoc, d.ydoc.getXmlFragment(FIELD), noteSchema().nodeFromJSON(json), { mapping: new Map(), isOMark: new Map() });
+const fill = (d, json) => updateYFragment(d.ydoc, d.ydoc.getXmlFragment(FIELD), noteSchema().nodeFromJSON(fitToSchema(json)), { mapping: new Map(), isOMark: new Map() });
+
+// A document whose text doesn't fit the editor (pictures loose among blocks, copied or imported
+// before fitToSchema) is fixed when it is read, and the fix is sent like any change.
+function repair(d) {
+  const json = yDocToProsemirrorJSON(d.ydoc, FIELD);
+  if (JSON.stringify(fitToSchema(json)) !== JSON.stringify(json)) d.ydoc.transact(() => fill(d, json));
+}
 
 // What an editor of the note edits: its content (JSON, on this computer: its changes go to
 // saveContent), or its Yjs document (in the account: it saves itself).
@@ -699,6 +706,7 @@ function docOf(id) {
       d.queue.push(bytes);
     }
     listen(d);
+    repair(d);
     if (d.queue.length) send(d);
     else if (d.rows.size > FOLD_AT) fold(d);
     return d;

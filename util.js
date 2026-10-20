@@ -1,4 +1,4 @@
-import { invoke } from './platform.js?v=6e0ce12';
+import { invoke } from './platform.js?v=6743703';
 
 export function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -115,6 +115,7 @@ export const icons = {
   calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
   checkbox: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 12l3 3 5-6"/>',
   link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
+  image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-9 9"/>',
 };
 
 export function icon(name, cls = '') {
@@ -202,4 +203,21 @@ export function treeCompare(a, b) {
     const c = pa[i].localeCompare(pb[i]);
     if (c || lastA) return c;
   }
+}
+
+// Big photos are made smaller before they are kept (at most `max` pixels on their longest side, as
+// JPEG or WebP); GIFs, SVGs and pictures under 1 MB stay as they are. Returns { bytes, ext }.
+export async function shrinkImage(file, max = 2560) {
+  const ext = ((file.name.match(/\.([a-z0-9]+)$/i)?.[1] || file.type.split('/')[1] || 'png').toLowerCase()).replace('jpeg', 'jpg').replace('svg+xml', 'svg');
+  const original = async () => ({ bytes: new Uint8Array(await file.arrayBuffer()), ext });
+  if (!/^image\/(jpeg|png|webp)$/.test(file.type) || file.size < 1_000_000) return original();
+  let bmp;
+  try { bmp = await createImageBitmap(file); } catch { return original(); }
+  const scale = Math.min(1, max / Math.max(bmp.width, bmp.height));
+  const canvas = Object.assign(document.createElement('canvas'), { width: Math.round(bmp.width * scale), height: Math.round(bmp.height * scale) });
+  canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height);
+  bmp.close();
+  const blob = await new Promise(done => canvas.toBlob(done, file.type === 'image/jpeg' ? 'image/jpeg' : 'image/webp', 0.85));
+  if (!blob || blob.size >= file.size) return original();
+  return { bytes: new Uint8Array(await blob.arrayBuffer()), ext: { 'image/jpeg': 'jpg', 'image/webp': 'webp' }[blob.type] || 'png' };
 }
