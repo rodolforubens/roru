@@ -21,11 +21,11 @@
 // 'board', name, sort, hidden, groupBy, pinned }) to show them.
 // Values by type: text and url a string, number a number, select an option id, multi a list of
 // option ids, date "YYYY-MM-DD", checkbox true, branch { repo (folder path), name }.
-import { desktop, invoke, convertFileSrc } from './platform.js?v=6743703';
-import { db, currentUser } from './account.js?v=6743703';
-import { createMirror, clone, reportStatus } from './mirror.js?v=6743703';
-import { Y, updateYFragment, yDocToProsemirrorJSON } from './vendor/tiptap.js?v=6743703';
-import { noteSchema, fitToSchema } from './editor.js?v=6743703';
+import { desktop, invoke, convertFileSrc } from './platform.js?v=8088795';
+import { db, currentUser } from './account.js?v=8088795';
+import { createMirror, clone, reportStatus } from './mirror.js?v=8088795';
+import { Y, updateYFragment, yDocToProsemirrorJSON } from './vendor/tiptap.js?v=8088795';
+import { noteSchema, fitToSchema } from './editor.js?v=8088795';
 
 const SAVE_DELAY = 300; // ms after the last edit (files on this computer)
 
@@ -274,6 +274,15 @@ export function createNote({ space, parent = null, title = '', props = null, kin
   return note;
 }
 
+// A note's icon: an emoji, or null for none (pages and databases then show their kind's icon).
+export function setIcon(id, emoji) {
+  const n = getNote(id);
+  if (!n || (n.icon ?? null) === (emoji || null)) return;
+  if (emoji) n.icon = emoji;
+  else delete n.icon;
+  changed([id]);
+}
+
 export function renameNote(id, title) {
   const n = getNote(id);
   if (!n || n.title === title) return;
@@ -379,6 +388,16 @@ export function addProperty(key, { name, type }) {
   getCollection(key).schema.push(p);
   changed();
   return p;
+}
+
+// Moves a property before another one (null for the end): the order every item shows them in.
+export function moveProperty(key, id, before = null) {
+  const c = getCollection(key), p = c.schema.find(x => x.id === id);
+  if (!p || id === before) return;
+  c.schema = c.schema.filter(x => x !== p);
+  const i = before ? c.schema.findIndex(x => x.id === before) : -1;
+  c.schema.splice(i < 0 ? c.schema.length : i, 0, p);
+  changed();
 }
 
 export function renameProperty(key, id, name) {

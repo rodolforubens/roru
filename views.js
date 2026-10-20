@@ -3,10 +3,11 @@
 // cards dragged between them). Also the properties block of an item's page, which shares the
 // value editors with the table.
 // A Branch property links a note to a branch of one of the space's repositories (notes as tasks).
-import * as S from './notes-store.js?v=6743703';
-import * as G from './git.js?v=6743703';
-import { esc, icon, folderName } from './util.js?v=6743703';
-import { desktop } from './platform.js?v=6743703';
+import * as S from './notes-store.js?v=8088795';
+import * as G from './git.js?v=8088795';
+import { esc, icon, folderName } from './util.js?v=8088795';
+import { desktop } from './platform.js?v=8088795';
+import { pickEmoji } from './emoji.js?v=8088795';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -403,8 +404,12 @@ function addProperty(x, y, key, then = () => {}) {
 
 function propMenu(x, y, key, p, view = null) {
   const sortable = view?.type === 'table';
+  const schema = S.getCollection(key).schema, at = schema.findIndex(q => q.id === p.id);
   host.showMenu(x, y, [
     { label: 'Rename…', run: async () => { const r = await host.modal({ title: 'Rename property', input: p.name, ok: 'Rename' }); if (r) S.renameProperty(key, p.id, r.value); } },
+    // (the order is also dragged by the property's name, in a page)
+    ...(at > 0 ? [{ label: 'Move up', run: () => S.moveProperty(key, p.id, schema[at - 1].id) }] : []),
+    ...(at >= 0 && at < schema.length - 1 ? [{ label: 'Move down', run: () => S.moveProperty(key, p.id, schema[at + 2]?.id ?? null) }] : []),
     '-',
     ...Object.entries(TYPES).filter(([t]) => t !== p.type).map(([t, [name]]) => ({ label: `Change type to ${name}`, run: () => S.setPropertyType(key, p.id, t) })),
     ...(sortable ? ['-',
@@ -446,7 +451,7 @@ function paintProps(b) {
   b.el.classList.toggle('has', schema.length > 0);
   b.el.innerHTML = schema.map(p => {
     const v = valueHtml(p, n.props?.[p.id]);
-    return `<div class="pp-row"><button class="pp-name" data-pp="${p.id}">${icon(TYPES[p.type][1])}<span>${esc(p.name)}</span></button>
+    return `<div class="pp-row" data-row="${p.id}"><button class="pp-name" data-pp="${p.id}" draggable="true" title="Drag to move it">${icon(TYPES[p.type][1])}<span>${esc(p.name)}</span></button>
       <div class="pp-val pt-${p.type}" data-prop="${p.id}">${v || '<span class="pp-empty">Empty</span>'}</div></div>`;
   }).join('') + `<button class="pp-add" title="Adds a property to the database (all its items)">${icon('plus')}Add a property</button>`;
 }
@@ -461,6 +466,36 @@ function bindProps(b) {
     if (name) return propMenu(r.left, r.bottom + 4, key, propOf(key, name.dataset.pp));
     if (add) addProperty(r.left, r.bottom + 4, key);
   });
+  // A property is dragged by its name to another place; a line shows where it will land.
+  let dragging = null;
+  const clear = () => b.el.querySelectorAll('.drop-before, .drop-after').forEach(x => x.classList.remove('drop-before', 'drop-after'));
+  const after = (row, e) => { const r = row.getBoundingClientRect(); return e.clientY > r.top + r.height / 2; };
+  b.el.addEventListener('dragstart', e => {
+    const name = e.target.closest?.('.pp-name');
+    if (!name) return;
+    dragging = name.dataset.pp;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', dragging);
+  });
+  b.el.addEventListener('dragover', e => {
+    const row = dragging && e.target.closest('.pp-row');
+    if (!row) return;
+    e.preventDefault();
+    clear();
+    if (row.dataset.row !== dragging) row.classList.add(after(row, e) ? 'drop-after' : 'drop-before');
+  });
+  b.el.addEventListener('drop', e => {
+    const row = dragging && e.target.closest('.pp-row');
+    if (!row) return;
+    e.preventDefault();
+    const key = S.collectionOf(b.id), rows = [...b.el.querySelectorAll('.pp-row')];
+    const before = after(row, e) ? rows[rows.indexOf(row) + 1]?.dataset.row ?? null : row.dataset.row;
+    // (right before or after itself it stays where it is)
+    if (row.dataset.row !== dragging && before !== dragging) S.moveProperty(key, dragging, before);
+    dragging = null;
+    clear();
+  });
+  b.el.addEventListener('dragend', () => { dragging = null; clear(); });
 }
 
 // =====================================================================
@@ -495,7 +530,7 @@ function paint(c) {
   const notes = S.childrenOf(c.space, c.parent);
   c.el.innerHTML = `<div class="cv cv-${c.ctx}">
     <div class="cv-bar">
-      <div class="cv-tabs">${col.views.map(v => `<button class="cv-tab ${v === view ? 'on' : ''}" data-view="${v.id}">${icon(VIEWS[v.type][1])}<span>${esc(v.name)}</span></button>`).join('')}
+      <div class="cv-tabs">${col.views.map(v => `<button class="cv-tab ${v === view ? 'on' : ''}" data-view="${v.id}">${icon(v.icon || VIEWS[v.type][1])}<span>${esc(v.name)}</span></button>`).join('')}
         <button class="cv-btn" data-cv="add-view" title="Add a view">${icon('plus')}</button></div>
       <span class="spacer"></span>
       <button class="cv-btn" data-cv="view-menu" title="View options">${icon('more')}</button>
@@ -651,7 +686,7 @@ function tableHtml(col, view, notes) {
     + props.map(p => `<th class="pt-${p.type}" data-head="${p.id}">${icon(TYPES[p.type][1])}<span>${esc(p.name)}</span>${sortMark(view, p.id)}</th>`).join('')
     + `<th class="vt-addcol" data-cv="add-prop" title="Add a property">${icon('plus')}</th></tr>`;
   const row = n => `<tr data-note="${n.id}">
-      <td class="vt-title"><div class="vt-tcell"><button class="vt-check" data-cv="select" title="Select (Shift+click a row)">${icon('check')}</button>${icon('note')}<span class="vt-tt ${n.title ? '' : 'untitled'}" data-cv="edit-title">${esc(n.title || 'Untitled')}</span>
+      <td class="vt-title"><div class="vt-tcell"><button class="vt-check" data-cv="select" title="Select (Shift+click a row)">${icon('check')}</button>${icon(n.icon || 'note')}<span class="vt-tt ${n.title ? '' : 'untitled'}" data-cv="edit-title">${esc(n.title || 'Untitled')}</span>
         <button class="vt-open" data-cv="open">Open</button></div></td>
       ${props.map(p => `<td class="vt-cell pt-${p.type}" data-prop="${p.id}">${valueHtml(p, n.props?.[p.id])}</td>`).join('')}<td class="vt-fill"></td></tr>`;
   return `<div class="vt-wrap"><table class="vt"><thead>${head}</thead><tbody>${notes.length ? sorted(notes, view, col.schema).map(row).join('') : ''}</tbody></table>
@@ -659,6 +694,38 @@ function tableHtml(col, view, notes) {
 }
 
 // ---------- board ----------
+
+// The pencil of a card: its title is edited right there (Enter or leaving it saves, Escape doesn't).
+function renameCard(card, id) {
+  const t = card?.querySelector('.bd-ct');
+  if (!t) return;
+  const input = Object.assign(document.createElement('textarea'), { className: 'bd-ct-edit', value: S.getNote(id)?.title || '', rows: 1, placeholder: 'Untitled' });
+  t.replaceWith(input);
+  card.draggable = false;
+  card.classList.add('renaming');
+  const fit = () => { input.style.height = 'auto'; input.style.height = input.scrollHeight + 'px'; };
+  let done = false;
+  const finish = save => {
+    if (done) return;
+    done = true;
+    const v = input.value.trim();
+    input.blur(); // (repaints wait while it has the focus)
+    if (save && v !== (S.getNote(id)?.title || '')) S.renameNote(id, v);
+    else repaintViews();
+  };
+  input.addEventListener('input', fit);
+  input.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+  });
+  input.addEventListener('blur', () => finish(true));
+  // clicks in it stay in it (they don't open the note)
+  for (const ev of ['click', 'mousedown', 'pointerdown']) input.addEventListener(ev, e => e.stopPropagation());
+  fit();
+  input.focus();
+  input.select();
+}
 
 const groupProp = (col, view) => col.schema.find(p => p.id === view.groupBy && p.type === 'select') || col.schema.find(p => p.type === 'select') || null;
 
@@ -677,12 +744,14 @@ function boardHtml(col, view, notes) {
       if (v == null || (p.type === 'checkbox' && !v)) return '';
       return `<div class="bd-prop pt-${p.type}">${p.type === 'checkbox' ? `${valueHtml(p, v)}<span>${esc(p.name)}</span>` : valueHtml(p, v)}</div>`;
     }).join('');
-    return `<div class="bd-card" data-note="${n.id}" draggable="true"><div class="bd-ct ${n.title ? '' : 'untitled'}">${esc(n.title || 'Untitled')}</div>${props}</div>`;
+    return `<div class="bd-card" data-note="${n.id}" draggable="true"><div class="bd-ct ${n.title ? '' : 'untitled'}">${n.icon ? icon(n.icon, 'bd-ic') : ''}${esc(n.title || 'Untitled')}</div>${props}
+      <button class="cv-btn bd-edit" data-cv="rename-card" title="Rename">${icon('pencil')}</button></div>`;
   };
   const label = o => (o ? chip(o) : `<span class="opt c-none">No ${esc(g.name)}</span>`);
   const column = (o, cards) => `<div class="bd-col" data-group="${o?.id || ''}">
       <div class="bd-head" ${o ? 'draggable="true" title="Drag to move the column"' : ''}>${label(o)}<span class="bd-n">${cards.length}</span>
-        <button class="cv-btn bd-more" data-cv="group-menu" title="Group options">${icon('more')}</button></div>
+        <button class="cv-btn bd-more" data-cv="group-menu" title="Group options">${icon('more')}</button>
+        <button class="cv-btn bd-top" data-cv="new-top" title="Add a card at the top">${icon('plus')}</button></div>
       <div class="bd-cards">${cards.map(card).join('')}</div>
       <button class="bd-new" data-cv="new-in">${icon('plus')}New</button></div>`;
   // Pinned groups leave the columns for a list on the right, like in Notion
@@ -757,6 +826,7 @@ function viewMenu(x, y, key, ctx) {
   const g = view.type === 'board' ? groupProp(col, view) : null;
   host.showMenu(x, y, [
     { label: 'Rename view…', run: async () => { const r = await host.modal({ title: 'Rename view', input: view.name, ok: 'Rename' }); if (r) S.updateView(key, view.id, { name: r.value }); } },
+    { label: view.icon ? 'Change icon…' : 'Add icon…', run: r => pickEmoji(r, view.icon, e => S.updateView(key, view.id, { icon: e })) },
     ...(view.type === 'board' && selects.length > 1 ? ['-', ...selects.map(p => ({ label: `Group by ${p.name}${g?.id === p.id ? '  ✓' : ''}`, run: () => S.updateView(key, view.id, { groupBy: p.id }) }))] : []),
     ...(view.type !== 'list' && col.schema.length ? ['-', ...col.schema.filter(p => p.id !== g?.id).map(p => {
       const hidden = view.hidden?.includes(p.id);
@@ -810,7 +880,15 @@ function bindCollection(c) {
         if (view.type === 'board') { const g = groupProp(col, view); return c.create(g?.options[0] ? { [g.id]: g.options[0].id } : {}); }
         return c.create({});
       case 'new-row': return newRow(c);
+      case 'rename-card': return renameCard(btn.closest('.bd-card'), id);
       case 'new-in': { const g = groupProp(col, view); return c.create(colEl.dataset.group ? { [g.id]: colEl.dataset.group } : {}); }
+      // the "+" of a column's header: a card at the top of the column
+      case 'new-top': {
+        const g = groupProp(col, view), first = colEl.querySelector('.bd-card')?.dataset.note;
+        const n = c.create(colEl.dataset.group ? { [g.id]: colEl.dataset.group } : {});
+        if (n && first) S.moveNote(n.id, n.parent ?? null, first);
+        return;
+      }
       case 'add-prop': return addProperty(r.left, r.bottom + 4, key);
       case 'add-status': return S.updateView(key, view.id, { groupBy: addStatus(key).id });
       case 'add-group': {

@@ -5,14 +5,15 @@
 // below as it was. Pages nest in other pages through their text (a link to the nested page, or a
 // database block); databases show in the tree as one item. Tabs and spaces belong to app.js (see
 // initNotesUi); the table and board views and the properties are in views.js.
-import * as S from './notes-store.js?v=6743703';
-import * as G from './git.js?v=6743703';
-import { createEditor, pickImages, addImages } from './editor.js?v=6743703';
-import { toMarkdown } from './markdown.js?v=6743703';
-import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView } from './views.js?v=6743703';
-import { importNotion } from './notion-import.js?v=6743703';
-import { esc, icon, store, folderName, plural, debounce, shrinkImage } from './util.js?v=6743703';
-import { desktop, invoke, isMobile } from './platform.js?v=6743703';
+import * as S from './notes-store.js?v=8088795';
+import * as G from './git.js?v=8088795';
+import { createEditor, pickImages, addImages } from './editor.js?v=8088795';
+import { pickEmoji } from './emoji.js?v=8088795';
+import { toMarkdown } from './markdown.js?v=8088795';
+import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView } from './views.js?v=8088795';
+import { importNotion } from './notion-import.js?v=8088795';
+import { esc, icon, store, folderName, plural, debounce, shrinkImage } from './util.js?v=8088795';
+import { desktop, invoke, isMobile } from './platform.js?v=8088795';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -21,7 +22,8 @@ const tauri = window.__TAURI__;
 let host = null;
 
 export const noteTitle = id => S.getNote(id)?.title || 'Untitled';
-export const noteIcon = id => (S.isDatabase(id) ? 'table' : 'note');
+// A note's icon: the emoji it was given, or its kind's.
+export const noteIcon = id => S.getNote(id)?.icon || (S.isDatabase(id) ? 'table' : 'note');
 // Where notes open from views and lists: 'side' (a side peek), 'center' (a center peek) or 'tab' (a
 // new tab). Each page or database chooses it for the notes inside it, or opens them like its parent
 // does ("Same as parent"); the top of a space opens them as chosen in the dashboard (or start page).
@@ -324,9 +326,11 @@ export function noteMenuItems(id, ctx = 'list') {
   const inTab = host.activeNote() === id, n = S.getNote(id), db = n.kind === 'database';
   return [
     ...(inTab ? [] : [{ label: 'Open in new tab', run: () => openNote(id, 'tab') }]),
-    ...(inTab || (ctx === 'peek' && peek?.mode === 'side') ? [] : [{ label: 'Open in side peek', run: () => openNote(id, 'side') }]),
-    ...(inTab || (ctx === 'peek' && peek?.mode === 'center') ? [] : [{ label: 'Open in center peek', run: () => openNote(id, 'center') }]),
+    // (a phone has no peeks)
+    ...(inTab || isMobile() || (ctx === 'peek' && peek?.mode === 'side') ? [] : [{ label: 'Open in side peek', run: () => openNote(id, 'side') }]),
+    ...(inTab || isMobile() || (ctx === 'peek' && peek?.mode === 'center') ? [] : [{ label: 'Open in center peek', run: () => openNote(id, 'center') }]),
     { label: db ? 'Open items in…' : 'Open sub-pages in…', run: r => host.showMenu(r.left, r.top, openInItems(id)) },
+    { label: n.icon ? 'Change icon…' : 'Add icon…', run: r => pickEmoji(r, n.icon, e => S.setIcon(id, e)) },
     '-',
     ...(db ? [{ label: 'Add an item', run: () => newNote({ space: n.space, parent: id }) }] : [
       { label: 'Add a page inside', run: () => newNote({ space: n.space, parent: id }) },
@@ -499,6 +503,7 @@ function mountPage(container, id, place) {
   container.innerHTML = `<div class="np np-${place} ${db ? 'np-db' : ''}">
     <div class="np-bar"><div class="np-crumbs"></div><div class="np-acts"></div></div>
     <div class="np-scroll"><div class="np-doc">
+      <div class="np-icon-row"></div>
       <textarea class="np-title" rows="1" placeholder="${db ? 'Untitled database' : 'Untitled'}" spellcheck="false"></textarea>
       ${db ? '<div class="np-children"></div>' : '<div class="np-props"></div><div class="np-editor"></div>'}
     </div></div>
@@ -631,6 +636,10 @@ function paintMeta(page) {
     : btn('more', 'more', 'More');
   const title = $('.np-title', page.el);
   if (document.activeElement !== title && title.value !== n.title) title.value = n.title;
+  // its icon over the title (or the button that gives it one)
+  $('.np-icon-row', page.el).innerHTML = n.icon
+    ? `<button class="np-icon" data-np="icon" title="Change the icon">${icon(n.icon)}</button>`
+    : `<button class="np-add-icon" data-np="icon">${icon('smile')}Add icon</button>`;
   page.el.classList.toggle('np-wide', S.wideViewsOf(page.id));
 }
 
@@ -642,6 +651,7 @@ function pageAction(page, act, el, e) {
     tab: () => openNote(page.id, 'tab'),
     close: closePeek,
     more: () => host.showMenu(r.right - 220, r.bottom + 4, noteMenuItems(page.id, page.place)),
+    icon: () => pickEmoji(r, S.getNote(page.id)?.icon, e => S.setIcon(page.id, e)),
   })[act]?.(e);
 }
 
@@ -749,7 +759,7 @@ function paintTree(t) {
     const open = expanded.has(n.id);
     return `<div class="nt-row ${n.id === active ? 'active' : ''} ${db ? 'nt-db' : ''}" data-note="${esc(n.id)}" style="--depth: ${depth}" draggable="true">
         <button class="nt-chev ${kids.length ? '' : 'leaf'} ${open ? 'open' : ''}" data-nt="toggle">${icon('chevron')}</button>
-        ${icon(db ? 'table' : 'note', 'nt-icon')}<span class="nt-title ${n.title ? '' : 'untitled'}">${esc(n.title || (db ? 'Untitled database' : 'Untitled'))}</span>
+        ${icon(n.icon || (db ? 'table' : 'note'), 'nt-icon')}<span class="nt-title ${n.title ? '' : 'untitled'}">${esc(n.title || (db ? 'Untitled database' : 'Untitled'))}</span>
         <span class="nt-acts"><button class="nt-btn" data-nt="more" title="More">${icon('more')}</button><button class="nt-btn" data-nt="add" title="${db ? 'Add an item' : 'Add a page inside'}">${icon('plus')}</button></span>
       </div>${open ? kids.map(k => row(k, depth + 1)).join('') : ''}`;
   };

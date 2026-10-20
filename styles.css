@@ -1385,12 +1385,22 @@ body.note-page .git-side, body.note-page .ex-side, body:not(.note-page) .note-si
 .bd-n { color: var(--text-3); font-size: 12px; }
 .bd-more { margin-left: auto; visibility: hidden; }
 .bd-head:hover .bd-more { visibility: visible; }
+.bd-top { visibility: hidden; }
+.bd-head:hover .bd-top { visibility: visible; }
 .bd-cards { display: flex; flex-direction: column; gap: 6px; min-height: 4px; }
 .bd-card {
   position: relative; display: flex; flex-direction: column; gap: 5px; padding: 8px 10px; cursor: pointer;
   background: var(--bg); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 1px 2px rgba(0, 0, 0, .12);
 }
 .bd-card:hover { border-color: var(--text-3); }
+/* the pencil that renames a card, over its corner */
+.bd-edit { position: absolute; top: 5px; right: 5px; visibility: hidden; background: var(--bg-2); }
+.bd-card:hover .bd-edit { visibility: visible; }
+.bd-card.renaming .bd-edit { display: none; }
+.bd-ct-edit {
+  width: 100%; margin: -2px -4px; padding: 2px 4px; resize: none; overflow: hidden; border: none; outline: none;
+  border-radius: 4px; background: var(--bg-3); color: var(--text); font: inherit; font-weight: 500; box-shadow: 0 0 0 2px var(--accent);
+}
 .bd-card.dragging { opacity: .4; }
 .bd-card.drop-before::before { content: ""; position: absolute; left: 0; right: 0; top: -5px; height: 2px; border-radius: 1px; background: var(--accent); }
 .bd-col.drop-end .bd-cards::after { content: ""; height: 2px; border-radius: 1px; background: var(--accent); }
@@ -1409,7 +1419,12 @@ body.note-page .git-side, body.note-page .ex-side, body:not(.note-page) .note-si
 /* the properties of a note's page */
 .np-props { display: flex; flex-direction: column; gap: 1px; margin: -4px 0 14px; }
 .np-props.has { padding-bottom: 10px; border-bottom: 1px solid var(--border); }
-.pp-row { display: flex; align-items: flex-start; gap: 8px; min-height: 32px; }
+.pp-row { position: relative; display: flex; align-items: flex-start; gap: 8px; min-height: 32px; }
+.pp-row.drop-before::before, .pp-row.drop-after::after {
+  content: ""; position: absolute; left: 0; right: 0; height: 2px; border-radius: 1px; background: var(--accent);
+}
+.pp-row.drop-before::before { top: -1px; }
+.pp-row.drop-after::after { bottom: -1px; }
 .pp-name {
   display: flex; align-items: center; gap: 6px; flex: none; width: 170px; height: 32px; padding: 0 6px; overflow: hidden;
   border: none; border-radius: 6px; background: none; color: var(--text-2); cursor: pointer; font-size: 13.5px; text-align: left; white-space: nowrap;
@@ -1599,6 +1614,16 @@ body.note-page .git-side, body.note-page .ex-side, body:not(.note-page) .note-si
 .lk-add:hover { border-color: var(--text-3); color: var(--text-2); background: var(--hover); }
 .lk-add .ic { width: 18px; height: 18px; }
 
+/* touch screens have no hover: the controls that show on hover are always there */
+@media (hover: none) {
+  .tab-x, .gh-acts, .file-row .act, .dash-acts .dash-iconbtn, .bd-more, .bd-top, .bd-edit, .vt-check, .db-open { visibility: visible; }
+  .nt-acts { display: flex; }
+  .vt-open { display: inline-block; }
+  .opt-more { display: grid; }
+  .np-props:not(.has) .pp-add, .cv-min .cv-link + .cv-link, .lk-more { opacity: 1; }
+  .nt-btn { width: 30px; height: 30px; }
+}
+
 /* ---------- a phone: one screen at a time (see mobile.js) ---------- */
 #mbar, #mnav { display: none; }
 html.mobile body { height: 100dvh; }
@@ -1680,3 +1705,45 @@ html.mobile .np-wide .np-children, html.mobile .np-wide .note-prose .db-block { 
 html.mobile .np-wide .cv-bar, html.mobile .np-wide .cv-body.cv-list, html.mobile .np-wide .cv-empty { margin-left: 16px; margin-right: 16px; }
 html.mobile .np-wide .bd { padding: 0 16px 8px; scroll-padding: 0 16px; }
 html.mobile .np-wide .vt-wrap { padding: 0 16px; }
+
+/* ---------- icons of notes and views (emoji, see emoji.js) ---------- */
+.ic-emoji text { fill: currentColor; }
+.np-icon-row { min-height: 0; margin: 0 0 4px; }
+.np-icon { display: block; width: 64px; height: 64px; padding: 4px; border: none; border-radius: 10px; background: none; cursor: pointer; }
+.np-icon:hover { background: var(--hover); }
+.np-icon .ic { width: 56px; height: 56px; }
+.np-add-icon {
+  display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px 3px 6px; border: none; border-radius: 6px;
+  background: none; color: var(--text-3); font-size: 13px; cursor: pointer; opacity: 0; transition: opacity .12s;
+}
+.np-add-icon .ic { width: 15px; height: 15px; }
+.np-add-icon:hover { background: var(--hover); color: var(--text-2); }
+.np-doc:hover .np-add-icon, .np-add-icon:focus-visible { opacity: 1; }
+@media (hover: none) { .np-add-icon { opacity: 1; } }
+.bd-ic { width: 15px; height: 15px; margin-right: 5px; vertical-align: -2px; }
+.emoji-pop {
+  position: fixed; z-index: 75; width: min(318px, calc(100vw - 16px)); padding: 8px; border: 1px solid var(--border);
+  border-radius: 10px; background: var(--bg-3); box-shadow: var(--shadow);
+}
+.ep-head { display: flex; gap: 6px; margin-bottom: 6px; }
+.ep-q { flex: 1; min-width: 0; height: 30px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-2); outline: none; }
+.ep-q:focus { border-color: var(--accent); }
+.ep-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(34px, 1fr)); gap: 2px; max-height: 240px; overflow-y: auto; }
+.ep-e { height: 34px; border: none; border-radius: 6px; background: none; font-size: 20px; line-height: 1; cursor: pointer; }
+.ep-e:hover, .ep-e.on { background: var(--hover); }
+
+/* the phone's toolbar while typing (see mobile.js): it takes the place of the bottom bar */
+#mtools { display: none; }
+html.mobile.typing #mnav { display: none; }
+html.mobile.typing #mtools {
+  display: flex; align-items: center; gap: 2px; flex: none; height: 48px; padding: 0 6px; overflow-x: auto;
+  border-top: 1px solid var(--border); background: var(--bg-2);
+}
+.mt-btn {
+  display: grid; place-items: center; flex: none; min-width: 38px; height: 38px; padding: 0 6px; border: none; border-radius: 8px;
+  background: none; color: var(--text-2); font-size: 16px; font-family: var(--font); cursor: pointer;
+}
+.mt-btn .ic { width: 19px; height: 19px; }
+.mt-btn.on { background: var(--sel); color: var(--text); }
+.mt-btn:active { background: var(--hover); }
+.mt-btn[data-t="done"] { margin-left: auto; color: var(--accent); }

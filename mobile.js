@@ -4,10 +4,10 @@
 // the phone's back button, through the browser history) and has the screen's menu, and the bar at
 // the bottom goes home, searches and makes a new page. Home lists the recent notes, the projects
 // and Home's notes.
-import * as S from './notes-store.js?v=6743703';
-import * as P from './projects.js?v=6743703';
-import { isMobile } from './platform.js?v=6743703';
-import { esc, icon, store } from './util.js?v=6743703';
+import * as S from './notes-store.js?v=8088795';
+import * as P from './projects.js?v=8088795';
+import { isMobile } from './platform.js?v=8088795';
+import { esc, icon, store } from './util.js?v=8088795';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -41,6 +41,7 @@ export function initMobile(h) {
   $('#mnav').innerHTML = `<button class="mn-btn" data-mn="home" title="Home">${icon('home')}</button>
     <button class="mn-btn" data-mn="search" title="Search">${icon('search')}</button>
     <button class="mn-btn" data-mn="new" title="New page">${icon('plus')}</button>`;
+  initTools();
   // the phone's back button (or gesture) goes back a screen
   addEventListener('popstate', () => {
     if (!isMobile() || stack.length < 2) return;
@@ -158,4 +159,54 @@ function openSearch() {
   input.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
   paint();
   input.focus();
+}
+
+// ---------- the toolbar while typing ----------
+//
+// A phone has no shortcuts for styles or Tab: while a note's text has the focus, the bar at the
+// bottom becomes a toolbar (bold, italic, strike, code, lists, indent and outdent, done). Its buttons
+// don't take the focus, so the keyboard stays.
+
+// [id, label (an icon or text), title, run(editor), active(editor)]
+const lists = ['listItem', 'taskItem'];
+const TOOLS = [
+  ['bold', '<b>B</b>', 'Bold', e => e.chain().toggleBold().run(), e => e.isActive('bold')],
+  ['italic', '<i>I</i>', 'Italic', e => e.chain().toggleItalic().run(), e => e.isActive('italic')],
+  ['strike', '<s>S</s>', 'Strikethrough', e => e.chain().toggleStrike().run(), e => e.isActive('strike')],
+  ['code', icon('code'), 'Code', e => e.chain().toggleCode().run(), e => e.isActive('code')],
+  ['bullets', icon('list'), 'Bulleted list', e => e.chain().toggleBulletList().run(), e => e.isActive('bulletList')],
+  ['todo', icon('todo'), 'To-do list', e => e.chain().toggleTaskList().run(), e => e.isActive('taskList')],
+  ['outdent', icon('outdent'), 'Outdent', e => lists.some(t => e.commands.liftListItem(t)), () => false],
+  ['indent', icon('indent'), 'Indent', e => lists.some(t => e.commands.sinkListItem(t)), () => false],
+  ['done', icon('check'), 'Done', e => e.commands.blur(), () => false],
+];
+
+let typing = null; // the editor being typed in
+
+function initTools() {
+  const bar = $('#mtools');
+  bar.innerHTML = TOOLS.map(([id, label, title]) => `<button class="mt-btn" data-t="${id}" title="${title}">${label}</button>`).join('');
+  const press = e => {
+    const b = e.target.closest('[data-t]');
+    if (!b || !typing) return;
+    e.preventDefault(); // the text keeps the focus (and the keyboard stays)
+    TOOLS.find(t => t[0] === b.dataset.t)[3](typing);
+    paintTools();
+  };
+  bar.addEventListener('pointerdown', press);
+  bar.addEventListener('mousedown', e => e.preventDefault());
+  // typing is when a note's text has the focus (its selection changes as the caret moves)
+  const sync = () => {
+    typing = document.activeElement?.closest?.('.ProseMirror')?.editor || null;
+    document.documentElement.classList.toggle('typing', !!typing);
+    paintTools();
+  };
+  document.addEventListener('focusin', sync);
+  document.addEventListener('focusout', () => setTimeout(sync));
+  document.addEventListener('selectionchange', sync);
+}
+
+function paintTools() {
+  if (!typing || !isMobile()) return;
+  for (const [id, , , , active] of TOOLS) $(`#mtools [data-t="${id}"]`)?.classList.toggle('on', !!active(typing));
 }

@@ -1,19 +1,19 @@
-import * as G from './git.js?v=6743703';
-import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=6743703';
-import { renderDiff, renderSubmodule, parseSubmoduleLog } from './diff.js?v=6743703';
-import { partialPatch } from './patch.js?v=6743703';
-import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=6743703';
-import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=6743703';
-import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=6743703';
-import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=6743703';
-import * as P from './projects.js?v=6743703';
-import { syncStatus, onSyncStatus } from './mirror.js?v=6743703';
-import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=6743703';
-import * as S from './notes-store.js?v=6743703';
-import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=6743703';
-import * as M from './mobile.js?v=6743703';
-import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=6743703';
-import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=6743703';
+import * as G from './git.js?v=8088795';
+import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=8088795';
+import { renderDiff, renderSubmodule, parseSubmoduleLog } from './diff.js?v=8088795';
+import { partialPatch } from './patch.js?v=8088795';
+import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=8088795';
+import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=8088795';
+import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=8088795';
+import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=8088795';
+import * as P from './projects.js?v=8088795';
+import { syncStatus, onSyncStatus } from './mirror.js?v=8088795';
+import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=8088795';
+import * as S from './notes-store.js?v=8088795';
+import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=8088795';
+import * as M from './mobile.js?v=8088795';
+import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=8088795';
+import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=8088795';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -60,14 +60,23 @@ function toast(msg, type = 'info', detail = '') {
 }
 
 // An item's `run` gets where the item was on the screen (to open more choices there).
+// A menu opened from a button (the one pressed last) stays next to it: one its caller right-aligns
+// to the button goes against the button's right edge whatever the menu's width, and none leaves the
+// window. Pressing the button again closes it.
+let pressed = null, pressedAt = 0, menuFrom = null, closing = null;
+
 function showMenu(x, y, items) {
+  const from = pressed?.isConnected && Date.now() - pressedAt < 2000 ? pressed : null;
+  if (from && from === closing) { closing = null; return; }
   const m = $('#menu');
   m.innerHTML = items.map((it, i) => it === '-' ? '<div class="mi-sep"></div>'
     : `<div class="mi ${it.danger ? 'danger' : ''} ${it.disabled ? 'disabled' : ''}" data-i="${i}">${esc(it.label)}</div>`).join('');
   m.hidden = false;
-  const r = m.getBoundingClientRect();
-  m.style.left = Math.min(x, innerWidth - r.width - 6) + 'px';
-  m.style.top = Math.min(y, innerHeight - r.height - 6) + 'px';
+  const r = m.getBoundingClientRect(), a = from?.getBoundingClientRect();
+  if (a && x < a.left) x = a.right - r.width;
+  m.style.left = Math.max(6, Math.min(x, innerWidth - r.width - 6)) + 'px';
+  m.style.top = Math.max(6, Math.min(y, innerHeight - r.height - 6)) + 'px';
+  menuFrom = from;
   m.onclick = e => {
     const mi = e.target.closest('.mi');
     if (!mi) return;
@@ -77,7 +86,13 @@ function showMenu(x, y, items) {
   };
 }
 const hideMenu = () => ($('#menu').hidden = true);
-window.addEventListener('mousedown', e => { if (!e.target.closest('#menu')) hideMenu(); });
+window.addEventListener('pointerdown', e => {
+  if (e.target.closest('#menu')) return;
+  pressed = e.button === 0 ? e.target.closest('button, [data-cv], [data-nt], [data-act], [data-mb], [data-np]') : null;
+  pressedAt = Date.now();
+  closing = !$('#menu').hidden && pressed && pressed === menuFrom ? pressed : null;
+  hideMenu();
+}, true);
 window.addEventListener('blur', hideMenu);
 
 // `fields` ([{ label, value, placeholder, optional }]) asks for several values at once;
