@@ -524,6 +524,8 @@ body.no-repo #repo-actions, body.no-repo [data-action="refresh"] { visibility: h
 .btn.danger { background: var(--red); color: #fff; border-color: transparent; }
 .btn:disabled { opacity: .45; cursor: default; }
 .commit-actions .btn { margin-left: auto; }
+.commit-actions .auto-push { margin-left: auto; position: relative; }
+.commit-actions .auto-push + .btn { margin-left: 0; }
 
 /* ---------- diff ---------- */
 .diff-pane { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg); }
@@ -876,7 +878,7 @@ table.rs-table .code { padding-left: 12px; }
 .modal .field { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; font-size: 12px; color: var(--text-2); }
 .modal .check { display: flex; align-items: center; gap: 8px; margin-top: 10px; color: var(--text-2); }
 .modal .check.toggle { cursor: pointer; color: var(--text); width: fit-content; }
-.modal .check.toggle input { position: absolute; opacity: 0; pointer-events: none; }
+.check.toggle input { position: absolute; opacity: 0; pointer-events: none; }
 .switch {
   width: 32px; height: 18px; border-radius: 9px; background: var(--bg-3); border: 1px solid var(--border);
   position: relative; flex: none; transition: background .15s, border-color .15s;

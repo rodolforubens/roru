@@ -1,19 +1,19 @@
-import * as G from './git.js?v=6db099e';
-import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=6db099e';
-import { renderDiff, renderSubmodule, parseSubmoduleLog } from './diff.js?v=6db099e';
-import { partialPatch } from './patch.js?v=6db099e';
-import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=6db099e';
-import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=6db099e';
-import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=6db099e';
-import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=6db099e';
-import * as P from './projects.js?v=6db099e';
-import { syncStatus, onSyncStatus } from './mirror.js?v=6db099e';
-import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=6db099e';
-import * as S from './notes-store.js?v=6db099e';
-import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=6db099e';
-import * as M from './mobile.js?v=6db099e';
-import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=6db099e';
-import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=6db099e';
+import * as G from './git.js?v=db25cd6';
+import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=db25cd6';
+import { renderDiff, renderSubmodule, parseSubmoduleLog } from './diff.js?v=db25cd6';
+import { partialPatch } from './patch.js?v=db25cd6';
+import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=db25cd6';
+import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=db25cd6';
+import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=db25cd6';
+import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=db25cd6';
+import * as P from './projects.js?v=db25cd6';
+import { syncStatus, onSyncStatus } from './mirror.js?v=db25cd6';
+import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=db25cd6';
+import * as S from './notes-store.js?v=db25cd6';
+import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=db25cd6';
+import * as M from './mobile.js?v=db25cd6';
+import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=db25cd6';
+import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=db25cd6';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -2186,6 +2186,7 @@ function renderChanges() {
           <textarea id="commit-msg" placeholder="Commit message  (Ctrl+Enter to commit)" spellcheck="false"></textarea>
           <div class="commit-actions">
             <label><input type="checkbox" id="amend"> Amend</label>
+            <label class="check toggle auto-push" title="Push right after each commit (remembered for this repository)"><input type="checkbox" id="auto-push"><span class="switch"></span> Auto push</label>
             <button class="btn primary" id="commit-btn">Commit</button>
           </div>
         </div>
@@ -2200,6 +2201,7 @@ function renderChanges() {
     $('#amend').checked = state.amend;
     $('#file-filter').value = state.fileFilter;
   }
+  $('#auto-push').checked = autoPushOn();
   renderFileLists();
   updateCommitButton();
 
@@ -2467,6 +2469,9 @@ function bindChangesEvents(root) {
       try { msg.value = state.commitMsg = (await g(['log', '-1', '--format=%B'])).trim(); } catch {}
     }
     updateCommitButton();
+  });
+  $('#auto-push', root).addEventListener('change', e => {
+    store('autoPush', { ...store('autoPush'), [state.repo]: e.target.checked || undefined });
   });
   $('#commit-btn', root).addEventListener('click', commit);
 }
@@ -2817,8 +2822,26 @@ async function commit() {
     const box = $('#amend');
     if (box) box.checked = false;
     toast(amend ? 'Commit amended' : merging ? 'Merge committed' : 'Commit created', 'ok');
+    // An amended commit may already be on the remote, where it would need a force push: never automatic.
+    if (!amend && autoPushOn()) autoPush();
   }
   updateCommitButton();
+}
+
+// Auto push is kept per repository (the checkbox next to Commit).
+const autoPushOn = () => !!store('autoPush')?.[state.repo];
+
+// Pushes without the push dialog: no tags, never forced, publishing the branch when it has no upstream.
+function autoPush() {
+  const s = state.status;
+  if (s.detached) return toast('Detached HEAD — the commit was not pushed', 'warn');
+  const remote = mainRemote();
+  if (!s.upstream && !remote) return toast('No remote configured — the commit was not pushed', 'warn');
+  return run('Push', () => g(s.upstream ? ['push'] : ['push', '-u', remote, 'HEAD']), {
+    success: s.upstream ? 'Push complete' : 'Branch published',
+    busy: s.upstream ? 'Pushing' : 'Publishing',
+    on: [at.action('push'), at.current(), s.upstream && at.remoteBranch(s.upstream)],
+  });
 }
 
 // =====================================================================

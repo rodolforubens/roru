@@ -8,8 +8,8 @@
 // back. Changes made elsewhere come in live (Realtime) and the owner builds its objects again from
 // the rows; a change made here and not written yet wins over them. Everything is read again
 // whenever the live channel (re)connects, which brings in what was missed while offline.
-import { db } from './account.js?v=6db099e';
-import { store } from './util.js?v=6db099e';
+import { db } from './account.js?v=db25cd6';
+import { store } from './util.js?v=db25cd6';
 
 // ---------- how saving is going, for everything kept in the account ----------
 
