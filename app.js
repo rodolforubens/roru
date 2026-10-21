@@ -1,19 +1,19 @@
-import * as G from './git.js?v=589d7e5';
-import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=589d7e5';
-import { renderDiff, renderSubmodule, parseSubmoduleLog } from './diff.js?v=589d7e5';
-import { partialPatch } from './patch.js?v=589d7e5';
-import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=589d7e5';
-import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=589d7e5';
-import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=589d7e5';
-import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=589d7e5';
-import * as P from './projects.js?v=589d7e5';
-import { syncStatus, onSyncStatus } from './mirror.js?v=589d7e5';
-import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=589d7e5';
-import * as S from './notes-store.js?v=589d7e5';
-import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=589d7e5';
-import * as M from './mobile.js?v=589d7e5';
-import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=589d7e5';
-import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=589d7e5';
+import * as G from './git.js?v=d465f4c';
+import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=d465f4c';
+import { renderDiff, renderSubmodule, parseSubmoduleLog } from './diff.js?v=d465f4c';
+import { partialPatch } from './patch.js?v=d465f4c';
+import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=d465f4c';
+import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=d465f4c';
+import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=d465f4c';
+import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=d465f4c';
+import * as P from './projects.js?v=d465f4c';
+import { syncStatus, onSyncStatus } from './mirror.js?v=d465f4c';
+import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=d465f4c';
+import * as S from './notes-store.js?v=d465f4c';
+import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=d465f4c';
+import * as M from './mobile.js?v=d465f4c';
+import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=d465f4c';
+import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=d465f4c';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -1481,7 +1481,7 @@ $('#op-banner').addEventListener('click', e => {
 function group(id, title, count, body, forceOpen = false, actions = []) {
   const collapsed = !forceOpen && state.collapsed[id];
   const acts = actions.map(a => `<button class="gh-act" data-gh-act="${a.act}" title="${esc(a.title)}">${icon(a.icon)}</button>`).join('');
-  return `<div class="group-head ${collapsed ? 'collapsed' : ''}" data-group="${id}">${icon('chevron')}${esc(title)}<span class="n">${count}</span>${acts ? `<span class="gh-acts">${acts}</span>` : ''}</div>
+  return `<div class="group-head ${collapsed ? 'collapsed' : ''}" data-group="${id}">${icon('chevron')}<span class="gh-title">${esc(title)}</span>${acts ? `<span class="gh-acts">${acts}</span>` : ''}<span class="n">${count}</span></div>
     <div class="group-body">${body}</div>`;
 }
 

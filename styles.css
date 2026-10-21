@@ -357,7 +357,9 @@ body.no-repo #repo-actions, body.no-repo [data-action="refresh"] { visibility: h
 .group-head:hover { color: var(--text-2); }
 .group-head > .ic { width: 12px; height: 12px; transition: transform .12s; }
 .group-head:not(.collapsed) > .ic { transform: rotate(90deg); }
-.group-head .n { margin-left: auto; font-weight: 500; letter-spacing: 0; }
+.group-head .gh-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Last even while a busy tag is appended, so every count lines up on the right. */
+.group-head .n { order: 1; margin-left: 4px; font-weight: 500; letter-spacing: 0; }
 .gh-acts { display: flex; gap: 2px; margin-left: 4px; visibility: hidden; }
 .group-head:hover .gh-acts, .group-head.is-busy .gh-acts { visibility: visible; }
 .gh-act {
