@@ -1,4 +1,4 @@
-import { invoke } from './platform.js?v=d465f4c';
+import { invoke } from './platform.js?v=8382e84';
 
 export function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -78,6 +78,8 @@ export const icons = {
   home: '<path d="M4 11l8-7 8 7M6 9.5V20h12V9.5"/>',
   cloud: '<path d="M7 18a5 5 0 0 1-.5-10A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9z"/>',
   close: '<path d="M6 6l12 12M18 6L6 18"/>',
+  maximize: '<rect x="5" y="5" width="14" height="14" rx="1.5"/>',
+  restore: '<rect x="5" y="8" width="11" height="11" rx="1.5"/><path d="M8 5h9.5A1.5 1.5 0 0 1 19 6.5V16"/>',
   check: '<path d="M5 12l5 5 9-10"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
   terminal: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M13 15h4"/>',

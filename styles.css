@@ -162,15 +162,27 @@ html.web .dash-actions [data-act="add"], html.web .dash-actions [data-act$="-all
 .np-failed .ic { width: 16px; height: 16px; }
 html.web .dash-row { cursor: default; }
 /* signed out, the web page is only the sign-in */
-html.web.signed-out #rail, html.web.signed-out #tabs, html.web.signed-out #toolbar,
+html.web.signed-out #rail, html.web.signed-out #titlebar, html.web.signed-out #toolbar,
 html.web.signed-out #op-banner, html.web.signed-out #statusbar { display: none !important; }
 
-/* ---------- repository tabs ---------- */
+/* ---------- repository tabs (and the window's title bar) ---------- */
+#titlebar { display: flex; flex: none; min-height: 37px; background: var(--bg); box-shadow: inset 0 -1px var(--border); }
 #tabs {
-  display: flex; align-items: flex-end; gap: 2px; flex: none; min-height: 37px;
-  padding: 6px 8px 0; background: var(--bg); box-shadow: inset 0 -1px var(--border);
-  overflow-x: auto; scrollbar-width: none;
+  display: flex; align-items: flex-end; gap: 2px; flex: 1; min-width: 0; min-height: 37px;
+  padding: 6px 8px 0; overflow-x: auto; scrollbar-width: none;
 }
+/* macOS draws its own buttons at the start of the bar (trafficLightPosition in tauri.macos.conf.json) */
+html.mac #tabs { padding-left: 76px; }
+/* minimize, maximize and close, drawn like Windows' own */
+#winctl { display: flex; flex: none; margin-left: auto; }
+#winctl:empty { display: none; }
+.wc {
+  display: grid; place-items: center; width: 46px; padding: 0;
+  border: none; background: none; color: var(--text-2); cursor: default;
+}
+.wc .ic { width: 12px; height: 12px; stroke-width: 1.7; }
+.wc:hover { background: var(--hover); color: var(--text); }
+.wc.wc-close:hover { background: #c42b1c; color: #fff; }
 #tabs::-webkit-scrollbar { display: none; }
 .tab {
   position: relative; display: flex; align-items: center; gap: 7px; flex: none;
@@ -1639,6 +1651,8 @@ html.mobile body { height: 100dvh; }
 /* no scrollbars taking room, like the phone's own apps */
 html.mobile ::-webkit-scrollbar { width: 0; height: 0; }
 html.mobile * { scrollbar-width: none; }
+/* (a desktop window zoomed in that far keeps its buttons) */
+html.mobile #titlebar:has(#winctl:empty),
 html.mobile #rail, html.mobile #tabs, html.mobile #toolbar, html.mobile #statusbar, html.mobile #op-banner,
 html.mobile #sidebar, html.mobile #split-sidebar, html.mobile .np-bar, html.mobile .dash-grip { display: none !important; }
 html.mobile #mbar {

@@ -13,20 +13,26 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Roru">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <link rel="stylesheet" href="styles.css?v=d465f4c">
+  <link rel="stylesheet" href="styles.css?v=8382e84">
   <!-- the web page starts signed out (only the sign-in shows) until the account is read (see app.js) -->
   <script>
     if (!window.__TAURI__) document.documentElement.classList.add('web', 'signed-out');
     if (matchMedia('(max-width: 640px)').matches) document.documentElement.classList.add('mobile');
+    // the desktop app has no native title bar: macOS keeps its own buttons, over the tab bar
+    if (window.__TAURI__ && /Mac/.test(navigator.platform)) document.documentElement.classList.add('mac');
   </script>
-  <script type="module" src="app.js?v=d465f4c"></script>
+  <script type="module" src="app.js?v=8382e84"></script>
 </head>
 <body>
   <nav id="rail"></nav>
   <div id="app">
     <!-- on a phone: the bar on top (back, title, menu) and the one at the bottom (see mobile.js) -->
     <header id="mbar"></header>
-    <nav id="tabs"></nav>
+    <!-- the window's title bar on the desktop: its empty space drags the window (see bindWindowControls) -->
+    <div id="titlebar" data-tauri-drag-region>
+      <nav id="tabs" data-tauri-drag-region></nav>
+      <div id="winctl" data-tauri-drag-region></div>
+    </div>
     <header id="toolbar">
       <div class="repo-title">
         <span class="repo-glyph"></span>

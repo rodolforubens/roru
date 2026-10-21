@@ -1,19 +1,19 @@
-import * as G from './git.js?v=d465f4c';
-import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=d465f4c';
-import { renderDiff, renderSubmodule, parseSubmoduleLog } from './diff.js?v=d465f4c';
-import { partialPatch } from './patch.js?v=d465f4c';
-import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=d465f4c';
-import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=d465f4c';
-import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=d465f4c';
-import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=d465f4c';
-import * as P from './projects.js?v=d465f4c';
-import { syncStatus, onSyncStatus } from './mirror.js?v=d465f4c';
-import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=d465f4c';
-import * as S from './notes-store.js?v=d465f4c';
-import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=d465f4c';
-import * as M from './mobile.js?v=d465f4c';
-import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=d465f4c';
-import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=d465f4c';
+import * as G from './git.js?v=8382e84';
+import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=8382e84';
+import { renderDiff, renderSubmodule, parseSubmoduleLog } from './diff.js?v=8382e84';
+import { partialPatch } from './patch.js?v=8382e84';
+import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=8382e84';
+import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=8382e84';
+import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=8382e84';
+import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=8382e84';
+import * as P from './projects.js?v=8382e84';
+import { syncStatus, onSyncStatus } from './mirror.js?v=8382e84';
+import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=8382e84';
+import * as S from './notes-store.js?v=8382e84';
+import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=8382e84';
+import * as M from './mobile.js?v=8382e84';
+import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=8382e84';
+import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=8382e84';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -764,6 +764,28 @@ function showNewTabMenu() {
   newTabMenu(r.left, r.bottom + 4);
 }
 
+// The desktop window has no native title bar: the tab bar is it. Its empty space drags the window
+// and a double click maximizes it (Tauri does both for `data-tauri-drag-region`); macOS keeps its
+// own buttons, elsewhere they are drawn at the end of the bar.
+function bindWindowControls() {
+  const win = tauri?.window?.getCurrentWindow();
+  if (!win || document.documentElement.classList.contains('mac')) return;
+  const box = $('#winctl');
+  const paint = max => {
+    box.innerHTML = `<button class="wc" data-wc="minimize" title="Minimize">${icon('minus')}</button>
+      <button class="wc" data-wc="toggleMaximize" title="${max ? 'Restore' : 'Maximize'}">${icon(max ? 'restore' : 'maximize')}</button>
+      <button class="wc wc-close" data-wc="close" title="Close">${icon('close')}</button>`;
+  };
+  const sync = () => win.isMaximized().then(paint, () => {});
+  paint(false);
+  sync();
+  win.onResized(sync);
+  box.addEventListener('click', e => {
+    const b = e.target.closest('[data-wc]');
+    if (b) win[b.dataset.wc]().catch(err => toast('The window could not do that', 'error', String(err)));
+  });
+}
+
 function bindTabs() {
   const bar = $('#tabs');
   bar.addEventListener('mousedown', e => {
@@ -782,7 +804,6 @@ function bindTabs() {
     if (x) return closeTab(x.closest('.tab').dataset.tab);
     if (e.target.closest('.tab-new')) showNewTabMenu();
   });
-  bar.addEventListener('dblclick', e => { if (e.target === bar) openRepoDialog(); });
   bar.addEventListener('contextmenu', e => {
     const tab = e.target.closest('.tab[data-tab]');
     if (!tab) return;
@@ -3241,6 +3262,7 @@ function initToolbar() {
     b.addEventListener('click', () => setMode(b.dataset.mode));
   });
   bindTabs();
+  bindWindowControls();
 
   const sbZoom = $('#sb-zoom');
   const showZoom = z => (sbZoom.textContent = Math.round(z * 100) + '%');
