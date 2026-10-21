@@ -2,10 +2,10 @@
 // its upstream, local changes, last commit), and fetch/pull for all of them at once.
 // Pulls here are fast-forward only, so they never create merge commits or stop on conflicts:
 // a branch that diverged from its upstream is reported, to be merged or rebased in its tab.
-import * as G from './git.js?v=ef92ac4';
-import * as P from './projects.js?v=ef92ac4';
-import { esc, fmtRelative, icon, folderName, normPath, plural } from './util.js?v=ef92ac4';
-import { desktop, invoke } from './platform.js?v=ef92ac4';
+import * as G from './git.js?v=50c00cc';
+import * as P from './projects.js?v=50c00cc';
+import { esc, fmtRelative, icon, folderName, normPath, plural } from './util.js?v=50c00cc';
+import { desktop, invoke } from './platform.js?v=50c00cc';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -49,7 +49,8 @@ const project = () => P.getProject(shown()?.dataset.project);
 export function renderDashboard(id) {
   if (!P.getProject(id)) return;
   const blocks = {
-    folders: '<h2 class="dash-sec">Folders</h2><div class="dash-list"></div>',
+    folders: `<div class="dash-sec-head"><h2 class="dash-sec">Folders</h2>
+      ${desktop ? `<button class="btn-sm" data-act="add-folders">${icon('plus')}Folder</button>` : ''}</div><div class="dash-list"></div>`,
     links: `<div class="dash-sec-head"><h2 class="dash-sec">Links</h2>
       <button class="btn-sm" data-act="add-link">${icon('plus')}Link</button></div><div class="dash-links"></div>`,
     notes: '<div class="dash-notes"></div>',

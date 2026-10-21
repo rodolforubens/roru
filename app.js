@@ -1,19 +1,19 @@
-import * as G from './git.js?v=ef92ac4';
-import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=ef92ac4';
-import { renderDiff, renderSubmodule, parseSubmoduleLog } from './diff.js?v=ef92ac4';
-import { partialPatch } from './patch.js?v=ef92ac4';
-import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=ef92ac4';
-import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=ef92ac4';
-import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=ef92ac4';
-import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=ef92ac4';
-import * as P from './projects.js?v=ef92ac4';
-import { syncStatus, onSyncStatus } from './mirror.js?v=ef92ac4';
-import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=ef92ac4';
-import * as S from './notes-store.js?v=ef92ac4';
-import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=ef92ac4';
-import * as M from './mobile.js?v=ef92ac4';
-import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=ef92ac4';
-import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=ef92ac4';
+import * as G from './git.js?v=50c00cc';
+import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=50c00cc';
+import { renderDiff, renderSubmodule, parseSubmoduleLog } from './diff.js?v=50c00cc';
+import { partialPatch } from './patch.js?v=50c00cc';
+import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=50c00cc';
+import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=50c00cc';
+import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=50c00cc';
+import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=50c00cc';
+import * as P from './projects.js?v=50c00cc';
+import { syncStatus, onSyncStatus } from './mirror.js?v=50c00cc';
+import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=50c00cc';
+import * as S from './notes-store.js?v=50c00cc';
+import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=50c00cc';
+import * as M from './mobile.js?v=50c00cc';
+import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=50c00cc';
+import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=50c00cc';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -1326,7 +1326,13 @@ async function doRefresh({ full = true } = {}) {
 
 function renderToolbar() {
   const s = state.status, project = currentProject();
-  const title = [state.repo && folderName(state.repo), state.note && noteTitle(state.note), project?.name, 'Roru Dashboard'].filter(Boolean).join(' — ');
+  const note = state.note && S.getNote(state.note);
+  const name = state.repo ? folderName(state.repo) : note ? noteTitle(state.note) : project ? project.name : 'Home';
+  $('.repo-glyph').innerHTML = icon(state.repo ? 'folder' : note ? noteIcon(state.note) : project ? 'grid' : 'home');
+  $('#repo-name').textContent = name;
+  $('#repo-branch').textContent = state.plain ? 'Folder — not a Git repository' : note ? (note.kind === 'database' ? 'Database' : 'Page')
+    : !state.repo ? (project ? 'Project dashboard' : '') : !s ? '' : s.detached ? 'Detached HEAD' : s.branch || '';
+  const title = [state.repo && name, state.note && noteTitle(state.note), project?.name, 'Roru Dashboard'].filter(Boolean).join(' — ');
   if (desktop) tauri.window?.getCurrentWindow().setTitle(title).catch(() => {});
   else document.title = title;
 
