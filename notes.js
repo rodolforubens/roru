@@ -5,15 +5,16 @@
 // below as it was. Pages nest in other pages through their text (a link to the nested page, or a
 // database block); databases show in the tree as one item. Tabs and spaces belong to app.js (see
 // initNotesUi); the table and board views and the properties are in views.js.
-import * as S from './notes-store.js?v=50c00cc';
-import * as G from './git.js?v=50c00cc';
-import { createEditor, pickImages, addImages } from './editor.js?v=50c00cc';
-import { pickEmoji } from './emoji.js?v=50c00cc';
-import { toMarkdown } from './markdown.js?v=50c00cc';
-import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView } from './views.js?v=50c00cc';
-import { importNotion } from './notion-import.js?v=50c00cc';
-import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative } from './util.js?v=50c00cc';
-import { desktop, invoke, isMobile } from './platform.js?v=50c00cc';
+import * as S from './notes-store.js?v=0b7d26a';
+import * as G from './git.js?v=0b7d26a';
+import { createEditor, pickImages, addImages } from './editor.js?v=0b7d26a';
+import { pickEmoji } from './emoji.js?v=0b7d26a';
+import { toMarkdown } from './markdown.js?v=0b7d26a';
+import { sharedPath } from './projects.js?v=0b7d26a';
+import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView } from './views.js?v=0b7d26a';
+import { importNotion } from './notion-import.js?v=0b7d26a';
+import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative } from './util.js?v=0b7d26a';
+import { desktop, invoke, isMobile } from './platform.js?v=0b7d26a';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -1050,14 +1051,15 @@ async function mentionItems(query, self) {
   const multi = folders.length > 1;
   const srcs = (await Promise.all(folders.map(f => folderSource(f).then(s => ({ repo: f, ...s }), () => null)))).filter(Boolean);
   const where = repo => (multi ? folderName(repo) : '');
+  // (mentions keep the folder's shared path, the same on every computer: see projects.js)
   const branches = best(srcs.flatMap(s => s.branches.map(b => ({ repo: s.repo, b }))), x => rank(x.b, q), q ? 5 : 3)
-    .map(({ repo, b }) => ({ kind: 'branch', id: b, repo, label: b, detail: where(repo), icon: 'branch', group: 'Branches' }));
+    .map(({ repo, b }) => ({ kind: 'branch', id: b, repo: sharedPath(repo), label: b, detail: where(repo), icon: 'branch', group: 'Branches' }));
   const commits = best(srcs.flatMap(s => s.commits.map((c, i) => ({ repo: s.repo, c, i }))),
     x => (q.length >= 4 && x.c.sha.startsWith(q) ? 4 : rank(x.c.subject, q)) * 1e4 - x.i, q ? 5 : 3)
-    .map(({ repo, c }) => ({ kind: 'commit', id: c.sha, repo, label: `${c.sha.slice(0, 7)} ${c.subject}`, detail: where(repo), icon: 'commit', group: 'Commits' }));
+    .map(({ repo, c }) => ({ kind: 'commit', id: c.sha, repo: sharedPath(repo), label: `${c.sha.slice(0, 7)} ${c.subject}`, detail: where(repo), icon: 'commit', group: 'Commits' }));
   const files = q ? best(srcs.flatMap(s => s.files.map(f => ({ repo: s.repo, f }))), x => {
     const name = x.f.slice(x.f.lastIndexOf('/') + 1);
     return rank(name, q) * 10 || rank(x.f, q);
-  }, 8).map(({ repo, f }) => ({ kind: 'file', id: f, repo, label: f.slice(f.lastIndexOf('/') + 1), detail: (multi ? folderName(repo) + '/' : '') + f.slice(0, f.lastIndexOf('/') + 1), icon: 'file', group: 'Files' })) : [];
+  }, 8).map(({ repo, f }) => ({ kind: 'file', id: f, repo: sharedPath(repo), label: f.slice(f.lastIndexOf('/') + 1), detail: (multi ? folderName(repo) + '/' : '') + f.slice(0, f.lastIndexOf('/') + 1), icon: 'file', group: 'Files' })) : [];
   return [...notes, ...branches, ...commits, ...files];
 }

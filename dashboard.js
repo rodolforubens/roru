@@ -2,10 +2,10 @@
 // its upstream, local changes, last commit), and fetch/pull for all of them at once.
 // Pulls here are fast-forward only, so they never create merge commits or stop on conflicts:
 // a branch that diverged from its upstream is reported, to be merged or rebased in its tab.
-import * as G from './git.js?v=50c00cc';
-import * as P from './projects.js?v=50c00cc';
-import { esc, fmtRelative, icon, folderName, normPath, plural } from './util.js?v=50c00cc';
-import { desktop, invoke } from './platform.js?v=50c00cc';
+import * as G from './git.js?v=0b7d26a';
+import * as P from './projects.js?v=0b7d26a';
+import { esc, fmtRelative, icon, folderName, normPath, plural } from './util.js?v=0b7d26a';
+import { desktop, invoke } from './platform.js?v=0b7d26a';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -75,7 +75,7 @@ export function updateDashboard() {
   P.sections(p).forEach(sec => root.appendChild(root.querySelector(`.dash-block[data-sec="${sec}"]`)));
   paint();
   paintLinks();
-  if (desktop) pool(p.folders.map(f => f.path).filter(path => !info.has(path) && !busy.has(path)), PARALLEL, loadFolder);
+  if (desktop) pool(P.folderPaths(p).filter(path => !info.has(path) && !busy.has(path)), PARALLEL, loadFolder);
 }
 
 // Reads the state of every folder again (F5, or when the window gets the focus back).
@@ -89,7 +89,7 @@ export async function reloadDashboard() {
   try {
     do {
       r.again = false;
-      await pool(p.folders.map(f => f.path).filter(path => !busy.has(path)), PARALLEL, loadFolder);
+      await pool(P.folderPaths(p).filter(path => !busy.has(path)), PARALLEL, loadFolder);
     } while (r.again);
   } finally {
     reloads.delete(p.id);
@@ -150,7 +150,7 @@ function paint() {
   paintHead();
   const list = $('.dash-list', shown());
   if (p.folders.length) {
-    const rows = p.folders.map(f => rowHtml(f.path));
+    const rows = P.folderPaths(p).map(rowHtml);
     list.innerHTML = `<div class="dash-lhead"><span>Folder</span><span>Branch</span><span class="h-sync">Sync</span><span>Changes</span><span class="h-commit">Last commit</span><span></span></div>`
       + rows.join('');
     list.querySelectorAll('.dash-row').forEach((row, i) => (row._html = rows[i]));
@@ -208,7 +208,7 @@ function paintHead() {
       </div>`;
   }
   const b = batches.get(p.id);
-  const ready = p.folders.some(f => info.get(f.path)?.kind === 'git');
+  const ready = P.folderPaths(p).some(path => info.get(path)?.kind === 'git');
   $('.dash-summary', head).innerHTML = summary(p);
   $('.dash-progress', head).innerHTML = b ? busyTag(`${b.verb} ${b.done} of ${b.total}`) : '';
   head.querySelectorAll('[data-act$="-all"]').forEach(btn => (btn.disabled = !!b || !ready));
@@ -224,7 +224,7 @@ function paintHead() {
 const busyTag = text => `<span class="busy-tag"><span class="spinner"></span><span class="busy-text">${esc(text)}…</span></span>`;
 
 function summary(p) {
-  const states = p.folders.map(f => info.get(f.path)).filter(s => s?.kind === 'git');
+  const states = P.folderPaths(p).map(path => info.get(path)).filter(s => s?.kind === 'git');
   const count = test => states.filter(test).length;
   const parts = [plural(p.folders.length, 'folder')];
   const add = (n, text, cls) => n && parts.push(`<span class="${cls}">${n} ${text}</span>`);
@@ -232,7 +232,7 @@ function summary(p) {
   add(count(s => changedFiles(s.status)), 'with changes', 'warn');
   add(count(s => s.status.behind), 'behind', 'warn');
   add(count(s => s.status.ahead), 'ahead', 'up');
-  add(p.folders.filter(f => info.get(f.path)?.kind === 'missing').length, 'not found', 'bad');
+  add(P.folderPaths(p).filter(path => info.get(path)?.kind === 'missing').length, 'not found', 'bad');
   return parts.join('<span class="dot">·</span>');
 }
 
@@ -246,7 +246,7 @@ function rowHtml(path) {
       loading: '<span class="muted">Loading…</span>',
       web: '<span class="muted">Opens in the desktop app</span>',
       plain: '<span class="muted">Folder — not a Git repository</span>',
-      missing: `<span class="bad">${icon('alert')}Folder not found — it was moved or deleted</span>`,
+      missing: `<span class="bad">${icon('alert')}Not found on this computer — locate it from its menu</span>`,
       error: `<span class="bad" title="${esc(s?.message)}">${icon('alert')}Could not read the repository</span>`,
     }[kind]}</div>`;
   return `<div class="dash-row ${kind}" data-path="${esc(path)}" title="${esc(path)}">
@@ -552,6 +552,7 @@ function rowMenu(path) {
   if (!desktop) return [{ label: 'Copy path', run: () => host.copy(path) }, '-', { label: 'Remove from the project', run: () => removeFolder(p.id, path) }];
   return [
     here ? { label: 'Open', run: () => host.open(path) } : { label: 'Locate the folder…', run: () => locate(p.id, path) },
+    ...(here ? [{ label: 'Use another folder on this computer…', run: () => locate(p.id, path) }] : []),
     ...(git ? ['-',
       { label: 'Fetch', disabled: busy.has(path), run: () => fetchOne(p.id, path) },
       { label: 'Pull (fast-forward only)', disabled: busy.has(path) || !s.status.upstream, run: () => pullOne(p.id, path) }] : []),
@@ -618,7 +619,7 @@ function pullBlocker(s) {
   return null;
 }
 
-const gitFolders = id => (P.getProject(id)?.folders || []).map(f => f.path).filter(path => info.get(path)?.kind === 'git' && !busy.has(path));
+const gitFolders = id => P.folderPaths(P.getProject(id)).filter(path => info.get(path)?.kind === 'git' && !busy.has(path));
 const failures = failed => failed.map(([path, msg]) => `${folderName(path)}: ${msg}`).join('\n\n');
 
 async function fetchAll(id) {
@@ -718,7 +719,8 @@ function removeFolder(id, path) {
   host.changed();
 }
 
-// A folder that is not found anymore can be pointed to where it was moved.
+// A folder that is not found (moved, or somewhere else on this computer) can be pointed to where it
+// is. Only this computer changes: the others keep their own path for it (see projects.js).
 async function locate(id, path) {
   const picked = await host.pickFolders({ title: `Locate ${folderName(path)}` });
   if (!picked) return;

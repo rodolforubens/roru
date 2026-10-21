@@ -1,19 +1,19 @@
-import * as G from './git.js?v=50c00cc';
-import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=50c00cc';
-import { renderDiff, renderSubmodule, parseSubmoduleLog } from './diff.js?v=50c00cc';
-import { partialPatch } from './patch.js?v=50c00cc';
-import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=50c00cc';
-import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=50c00cc';
-import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=50c00cc';
-import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=50c00cc';
-import * as P from './projects.js?v=50c00cc';
-import { syncStatus, onSyncStatus } from './mirror.js?v=50c00cc';
-import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=50c00cc';
-import * as S from './notes-store.js?v=50c00cc';
-import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=50c00cc';
-import * as M from './mobile.js?v=50c00cc';
-import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=50c00cc';
-import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=50c00cc';
+import * as G from './git.js?v=0b7d26a';
+import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=0b7d26a';
+import { renderDiff, renderSubmodule, parseSubmoduleLog } from './diff.js?v=0b7d26a';
+import { partialPatch } from './patch.js?v=0b7d26a';
+import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=0b7d26a';
+import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=0b7d26a';
+import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=0b7d26a';
+import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=0b7d26a';
+import * as P from './projects.js?v=0b7d26a';
+import { syncStatus, onSyncStatus } from './mirror.js?v=0b7d26a';
+import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=0b7d26a';
+import * as S from './notes-store.js?v=0b7d26a';
+import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=0b7d26a';
+import * as M from './mobile.js?v=0b7d26a';
+import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=0b7d26a';
+import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=0b7d26a';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -736,7 +736,7 @@ function renderTabs() {
 // repositories not already open.
 function newTabMenu(x, y, extra = []) {
   const project = P.getProject(tabs.space);
-  const linked = (project?.folders || []).map(f => f.path).filter(p => !tabs.list.includes(p));
+  const linked = P.folderPaths(project).filter(p => !tabs.list.includes(p));
   const recent = (store('recent') || []).filter(p => !tabs.list.includes(p) && !linked.includes(p));
   const item = (p, run) => ({ label: `${folderName(p)}  —  ${p}`, run });
   const notes = [
@@ -3268,6 +3268,7 @@ bindRail();
 
 // Opens what a mention in a note points to: a file in the explorer, a commit or a branch in the history.
 async function revealMention({ kind, id, repo }) {
+  repo = P.localPath(repo);
   if (!desktop) return toast('Files, commits and branches open in the desktop app, which has the folders');
   if (!repo || !(await isFolder(repo))) return toast('Folder not found', 'error', repo || '');
   await openRepo(repo);
@@ -3322,7 +3323,7 @@ onAccount(accountChanged);
     spaceName: id => P.getProject(id)?.name || 'Home',
     spaces: () => ['home', ...P.listProjects().map(p => p.id)],
     // (the web page has no folders to mention or to take branches from)
-    folders: () => (!desktop ? [] : currentProject()?.folders.map(f => f.path) ?? tabs.list.filter(k => !noteOf(k))),
+    folders: () => (!desktop ? [] : (currentProject() && P.folderPaths(currentProject())) ?? tabs.list.filter(k => !noteOf(k))),
     activeNote: () => state.note,
     openTab: (id, opts) => openNoteTab(id, opts),
     closeTabs: closeNoteTabs,

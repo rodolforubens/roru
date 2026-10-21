@@ -3,11 +3,12 @@
 // cards dragged between them). Also the properties block of an item's page, which shares the
 // value editors with the table.
 // A Branch property links a note to a branch of one of the space's repositories (notes as tasks).
-import * as S from './notes-store.js?v=50c00cc';
-import * as G from './git.js?v=50c00cc';
-import { esc, icon, folderName } from './util.js?v=50c00cc';
-import { desktop } from './platform.js?v=50c00cc';
-import { pickEmoji } from './emoji.js?v=50c00cc';
+import * as S from './notes-store.js?v=0b7d26a';
+import * as G from './git.js?v=0b7d26a';
+import { esc, icon, folderName } from './util.js?v=0b7d26a';
+import { desktop } from './platform.js?v=0b7d26a';
+import { localPath, sharedPath } from './projects.js?v=0b7d26a';
+import { pickEmoji } from './emoji.js?v=0b7d26a';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -271,7 +272,9 @@ function knownRefs(repo) {
 
 // The branch with its state: checked out, commits to push and to pull, or gone. A click on it
 // opens the repository at the branch.
+// (a Branch value keeps the folder's shared path, the same on every computer: see projects.js)
 function branchHtml(v) {
+  v = { ...v, repo: localPath(v.repo) };
   const refs = knownRefs(v.repo);
   const b = refs?.local.find(x => x.name === v.name);
   const missing = refs !== undefined && !b;
@@ -321,7 +324,7 @@ async function branchPicker(anchor, propId, ids) {
       + shown.map(({ repo, b }, i) => {
         const head = multi && repo !== last ? `<div class="opt-group">${esc(folderName(repo))}</div>` : '';
         last = repo;
-        const on = vals.every(v => v?.repo === repo && v?.name === b.name);
+        const on = vals.every(v => v && localPath(v.repo) === repo && v.name === b.name);
         return `${head}<div class="opt-item ${on ? 'on' : ''}" data-i="${i}">${icon('branch')}<span class="opt-branch">${esc(b.name)}</span>
           ${b.current ? '<span class="brc-cur" title="Checked out"></span>' : ''}<span class="spacer"></span>${on ? icon('check') : ''}</div>`;
       }).join('')
@@ -331,7 +334,7 @@ async function branchPicker(anchor, propId, ids) {
   const pick = i => {
     const { repo, b } = shown[i];
     closePicker();
-    setAll(ids, propId, () => ({ repo, name: b.name }));
+    setAll(ids, propId, () => ({ repo: sharedPath(repo), name: b.name }));
   };
   el.addEventListener('mousedown', e => {
     if (e.target === q) return;
@@ -381,7 +384,7 @@ export async function createBranchFor(id, { propId = null, x = innerWidth / 2 - 
   }
   const key = S.collectionOf(id);
   const pid = propId || S.getCollection(key).schema.find(p => p.type === 'branch')?.id || S.addProperty(key, { name: 'Branch', type: 'branch' }).id;
-  S.setProp(id, pid, { repo, name });
+  S.setProp(id, pid, { repo: sharedPath(repo), name });
   host.toast(`Branch "${name}" created${r.checked ? ' and checked out' : ''}`, 'ok');
   refsOf(repo, { fresh: true });
   host.gitChanged(repo);

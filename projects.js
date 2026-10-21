@@ -4,10 +4,13 @@
 // they are kept in the account, where every change is written right away and the changes made
 // elsewhere (the web page, another computer) come in live (see "Account" below). The ones kept on
 // this device are never changed by the account: they go there only as copies (importProjects).
-// Folders are local paths like "C:/Projects/api" ({ path }), the same keys the tabs use.
-import { store } from './util.js?v=50c00cc';
-import { db } from './account.js?v=50c00cc';
-import { createMirror, clone } from './mirror.js?v=50c00cc';
+// Folders are paths like "C:/Projects/api" ({ path }). That path is the folder's id, the same on every
+// computer (and in the mentions and Branch values of the notes); each computer can point it to a
+// folder of its own (see "Where the folders are on this computer" below), and the rest of the UI
+// (tabs, the dashboard, Git) only sees those local paths.
+import { store } from './util.js?v=0b7d26a';
+import { db } from './account.js?v=0b7d26a';
+import { createMirror, clone } from './mirror.js?v=0b7d26a';
 
 export const COLORS = ['#7aa2f7', '#9ece6a', '#f7768e', '#e0af68', '#bb9af7', '#2ac3de', '#ff9e64', '#73daca'];
 
@@ -80,11 +83,44 @@ export function moveProject(id, targetId, after = false) {
   save();
 }
 
-// Adds folders, skipping the ones the project already has. Returns how many were added.
+// =====================================================================
+// Where the folders are on this computer
+// =====================================================================
+//
+// A folder of a project can be somewhere else on each computer ("C:/etc" on one, "C:/Projects/etc" on
+// another): this computer keeps, for the folders it found elsewhere, their shared path -> its own
+// path. It is never written to the account, so locating a folder here doesn't move it on the others.
+
+const places = () => store('folderPaths') || {};
+
+// The path of a folder on this computer (`shared`: the one kept in the project).
+export const localPath = shared => (shared && places()[shared]) || shared;
+
+// The shared path of a folder of this computer (what is kept in projects, mentions and Branch values).
+export function sharedPath(local) {
+  if (!local) return local;
+  const map = places();
+  return Object.keys(map).find(k => map[k] === local) || local;
+}
+
+// Points the folder `shared` to `local` on this computer only.
+export function setLocalPath(shared, local) {
+  const map = places();
+  for (const k of Object.keys(map)) if (map[k] === local) delete map[k];
+  if (local && local !== shared) map[shared] = local;
+  else delete map[shared];
+  store('folderPaths', map);
+}
+
+// The folders of a project, as paths of this computer.
+export const folderPaths = p => (p?.folders || []).map(f => localPath(f.path));
+
+// Adds folders (paths of this computer), skipping the ones the project already has. Returns how many
+// were added.
 export function addFolders(id, paths) {
   const p = getProject(id);
   if (!p) return 0;
-  const fresh = [...new Set(paths)].filter(path => !p.folders.some(f => f.path === path));
+  const fresh = [...new Set(paths.map(sharedPath))].filter(path => !p.folders.some(f => f.path === path));
   p.folders.push(...fresh.map(path => ({ path })));
   save();
   return fresh.length;
@@ -93,21 +129,27 @@ export function addFolders(id, paths) {
 export function removeFolder(id, path) {
   const p = getProject(id);
   if (!p) return;
-  p.folders = p.folders.filter(f => f.path !== path);
+  const shared = sharedPath(path);
+  p.folders = p.folders.filter(f => f.path !== shared);
   save();
 }
 
-// Points a folder that was moved (or renamed) to where it is now.
+// Points a folder that was moved, renamed or is somewhere else on this computer to where it is here.
+// Only this computer changes: the project keeps its shared path.
 export function replaceFolder(id, path, next) {
   const p = getProject(id);
-  const f = p?.folders.find(x => x.path === path);
+  const shared = sharedPath(path);
+  const f = p?.folders.find(x => x.path === shared);
   if (!f) return;
-  if (p.folders.some(x => x.path === next)) p.folders = p.folders.filter(x => x !== f);
-  else f.path = next;
-  save();
+  const other = p.folders.find(x => x !== f && x.path === sharedPath(next));
+  if (other) {
+    // (already in the project under another path: the two are the same folder)
+    p.folders = p.folders.filter(x => x !== f);
+    save();
+  } else setLocalPath(shared, next);
 }
 
-export const hasFolder = (p, path) => p.folders.some(f => f.path === path);
+export const hasFolder = (p, path) => p.folders.some(f => f.path === sharedPath(path));
 
 // "Roru Dashboard" -> "RD", "roru-git" -> "RG", "api" -> "A".
 export function initials(name) {
