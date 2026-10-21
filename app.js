@@ -1,19 +1,19 @@
-import * as G from './git.js?v=ceecca2';
-import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=ceecca2';
-import { renderDiff, renderSubmodule, parseSubmoduleLog } from './diff.js?v=ceecca2';
-import { partialPatch } from './patch.js?v=ceecca2';
-import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=ceecca2';
-import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=ceecca2';
-import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=ceecca2';
-import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=ceecca2';
-import * as P from './projects.js?v=ceecca2';
-import { syncStatus, onSyncStatus } from './mirror.js?v=ceecca2';
-import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=ceecca2';
-import * as S from './notes-store.js?v=ceecca2';
-import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=ceecca2';
-import * as M from './mobile.js?v=ceecca2';
-import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=ceecca2';
-import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=ceecca2';
+import * as G from './git.js?v=69a6653';
+import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=69a6653';
+import { renderDiff, renderSubmodule, parseSubmoduleLog } from './diff.js?v=69a6653';
+import { partialPatch } from './patch.js?v=69a6653';
+import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=69a6653';
+import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=69a6653';
+import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=69a6653';
+import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=69a6653';
+import * as P from './projects.js?v=69a6653';
+import { syncStatus, onSyncStatus } from './mirror.js?v=69a6653';
+import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=69a6653';
+import * as S from './notes-store.js?v=69a6653';
+import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=69a6653';
+import * as M from './mobile.js?v=69a6653';
+import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=69a6653';
+import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=69a6653';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -936,6 +936,20 @@ function accountButton() {
 // Projects of this computer (kept for when signed out) that the account doesn't have.
 const localOnly = () => P.localProjects().filter(p => !P.hasProject(p.id));
 
+// The web page installs as an app of its own window (manifest.webmanifest, sw.js): the browser
+// offers it in its address bar, and the account menu too while the browser allows it.
+let installPrompt = null;
+if (!desktop) {
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; });
+  addEventListener('appinstalled', () => { installPrompt = null; });
+}
+async function installApp() {
+  const e = installPrompt;
+  installPrompt = null;
+  await e?.prompt();
+}
+
 async function accountMenu(x, y) {
   const u = currentUser();
   const note = label => ({ label, disabled: true, run: () => {} });
@@ -953,6 +967,7 @@ async function accountMenu(x, y) {
     ...(local.length ? [{ label: `Copy ${plural(local.length, 'project')} of this computer to the account…`, run: copyLocalProjects }] : []),
     ...(localNotes.length ? [{ label: `Copy ${plural(localNotes.length, 'note')} of this computer to the account…`, run: () => copyLocalNotes(localNotes) }] : []),
     ...files,
+    ...(installPrompt ? ['-', { label: 'Install as an app…', run: installApp }] : []),
     '-',
     { label: 'Sign out', run: () => signOut().catch(e => toast('Could not sign out', 'error', String(e.message || e))) },
   ] : [

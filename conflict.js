@@ -1,6 +1,6 @@
 // Conflict markers: parsing a conflicted file and rendering the conflict resolver.
-import { esc } from './util.js?v=ceecca2';
-import { highlighterFor } from './highlight.js?v=ceecca2';
+import { esc } from './util.js?v=69a6653';
+import { highlighterFor } from './highlight.js?v=69a6653';
 
 const CTX = 3; // unchanged lines kept visible around each conflict
 
