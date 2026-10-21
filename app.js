@@ -1,19 +1,19 @@
-import * as G from './git.js?v=872b273';
-import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=872b273';
-import { renderDiff, renderSubmodule, parseSubmoduleLog } from './diff.js?v=872b273';
-import { partialPatch } from './patch.js?v=872b273';
-import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=872b273';
-import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=872b273';
-import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=872b273';
-import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=872b273';
-import * as P from './projects.js?v=872b273';
-import { syncStatus, onSyncStatus } from './mirror.js?v=872b273';
-import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=872b273';
-import * as S from './notes-store.js?v=872b273';
-import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=872b273';
-import * as M from './mobile.js?v=872b273';
-import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=872b273';
-import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=872b273';
+import * as G from './git.js?v=ef92ac4';
+import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=ef92ac4';
+import { renderDiff, renderSubmodule, parseSubmoduleLog } from './diff.js?v=ef92ac4';
+import { partialPatch } from './patch.js?v=ef92ac4';
+import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=ef92ac4';
+import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=ef92ac4';
+import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=ef92ac4';
+import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=ef92ac4';
+import * as P from './projects.js?v=ef92ac4';
+import { syncStatus, onSyncStatus } from './mirror.js?v=ef92ac4';
+import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=ef92ac4';
+import * as S from './notes-store.js?v=ef92ac4';
+import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=ef92ac4';
+import * as M from './mobile.js?v=ef92ac4';
+import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=ef92ac4';
+import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=ef92ac4';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -1326,11 +1326,7 @@ async function doRefresh({ full = true } = {}) {
 
 function renderToolbar() {
   const s = state.status, project = currentProject();
-  const name = state.repo ? folderName(state.repo) : project ? project.name : state.note || !desktop ? 'Home' : 'Open repository';
-  $('#repo-name').textContent = name;
-  $('#repo-branch').textContent = state.plain ? 'Folder — not a Git repository' : state.note ? 'Note'
-    : !state.repo ? (project ? 'Project dashboard' : '') : !s ? '' : s.detached ? 'Detached HEAD' : s.branch || '';
-  const title = [state.repo && name, state.note && noteTitle(state.note), project?.name, 'Roru Dashboard'].filter(Boolean).join(' — ');
+  const title = [state.repo && folderName(state.repo), state.note && noteTitle(state.note), project?.name, 'Roru Dashboard'].filter(Boolean).join(' — ');
   if (desktop) tauri.window?.getCurrentWindow().setTitle(title).catch(() => {});
   else document.title = title;
 
@@ -3189,21 +3185,7 @@ function initToolbar() {
     b.insertAdjacentHTML('afterbegin', icon(iconsFor[b.dataset.action]));
     b.addEventListener('click', () => actions[b.dataset.action]());
   });
-  $('.repo-glyph').innerHTML = icon('folder');
-  $('.repo-chev').innerHTML = icon('down');
   $('.sb-filter .filter-icon').outerHTML = icon('search');
-  $('#repo-btn').addEventListener('click', e => {
-    const r = e.currentTarget.getBoundingClientRect();
-    const repoItems = state.plain ? [{ label: 'Initialize Git repository…', run: initRepo }] : [
-      { label: 'Add submodule…', run: addSubmodule },
-      { label: 'Update submodules', disabled: !state.submodules.length, run: () => updateSubmodules() },
-      ...(state.lfs?.installed ? [{ label: 'Track files with Git LFS…', run: () => trackLfs() }] : []),
-    ];
-    const project = currentProject();
-    if (!desktop) return showMenu(r.left, r.bottom + 4, project ? projectMenuItems(project).slice(2) : [{ label: 'New project…', run: newProject }]);
-    newTabMenu(r.left, r.bottom + 4, state.repo ? ['-', ...repoItems, '-', { label: 'Close tab', run: () => closeTab() }]
-      : project ? ['-', ...projectMenuItems(project).slice(2)] : []);
-  });
   document.querySelectorAll('#mode-toggle [data-mode]').forEach(b => {
     b.insertAdjacentHTML('afterbegin', icon(b.dataset.mode === 'git' ? 'branch' : 'folder'));
     b.addEventListener('click', () => setMode(b.dataset.mode));

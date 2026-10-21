@@ -156,7 +156,7 @@ input, textarea { font: inherit; color: inherit; user-select: text; }
 .sync-dot.offline { background: var(--yellow); }
 
 /* the web page: no folders to open and no Git (they are in the desktop app) */
-html.web #mode-toggle, html.web .mode-toggle + .tb-sep, html.web #repo-actions, html.web #toolbar [data-action="refresh"],
+html.web #toolbar,
 html.web .dash-actions [data-act="add"], html.web .dash-actions [data-act$="-all"], html.web .dash-actions [data-act="refresh"] { display: none; }
 .np-failed { display: flex; align-items: center; gap: 8px; color: var(--red); padding: 8px 0; }
 .np-failed .ic { width: 16px; height: 16px; }
@@ -214,18 +214,6 @@ html.web.signed-out #op-banner, html.web.signed-out #statusbar { display: none !
   border-bottom: 1px solid var(--border);
   flex: none;
 }
-.repo-btn {
-  display: flex; align-items: center; gap: 8px;
-  background: none; border: 1px solid transparent; border-radius: 8px;
-  padding: 4px 8px; cursor: pointer; min-width: 200px; max-width: 320px; text-align: left;
-}
-.repo-btn:hover { background: var(--hover); }
-.repo-glyph { color: var(--accent); display: flex; }
-.repo-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-#repo-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#repo-branch { font-size: 11.5px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#repo-branch:empty { display: none; }
-.repo-chev { color: var(--text-3); display: flex; }
 .tb-group { display: flex; align-items: center; gap: 2px; }
 .tb-sep { width: 1px; height: 26px; background: var(--border); margin: 0 6px; }
 .tb {
