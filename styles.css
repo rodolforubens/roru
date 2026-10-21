@@ -1167,6 +1167,35 @@ body.note-page .git-side, body.note-page .ex-side, body:not(.note-page) .note-si
 }
 .nt-row.drop-before::before { top: -1px; }
 .nt-row.drop-after::after { bottom: -1px; }
+.nt-trash {
+  display: flex; align-items: center; gap: 6px; width: 100%; height: 28px; margin-top: 10px; padding: 0 8px;
+  border: none; border-radius: 6px; background: none; color: var(--text-3); font: inherit; cursor: pointer;
+}
+.nt-trash:hover { background: var(--hover); color: var(--text); }
+.nt-trash .ic { width: 15px; height: 15px; }
+
+/* ---------- notes: the trash ---------- */
+.modal.trash { width: min(540px, 94vw); display: flex; flex-direction: column; padding: 14px 14px 12px; outline: none; }
+.tr-head { display: flex; align-items: center; justify-content: space-between; }
+.tr-head h3 { margin: 0; }
+.modal .tr-q { margin: 10px 0 6px; }
+.tr-list { min-height: 110px; max-height: 52vh; overflow-y: auto; margin: 0 -6px; }
+.tr-row { display: flex; align-items: center; gap: 8px; padding: 6px; border-radius: 6px; }
+.tr-row:hover { background: var(--hover); }
+.tr-icon { width: 16px; height: 16px; flex: none; color: var(--text-3); }
+.tr-text { flex: 1; min-width: 0; }
+.tr-title, .tr-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tr-title.untitled { color: var(--text-3); }
+.tr-path { font-size: 11.5px; color: var(--text-3); }
+.tr-del:hover { color: var(--red); }
+.tr-empty { padding: 36px 10px; text-align: center; color: var(--text-3); }
+.tr-foot {
+  display: flex; align-items: center; gap: 12px; margin-top: 10px; padding-top: 10px;
+  border-top: 1px solid var(--border); font-size: 12px; color: var(--text-3);
+}
+.tr-foot span { flex: 1; }
+.tr-foot .btn-sm.danger:not(:disabled) { color: var(--red); }
+.tr-foot .btn-sm.danger:hover:not(:disabled) { border-color: var(--red); }
 
 /* notes as a section of the dashboard and of the start page */
 .dash-sec { margin: 4px 24px 8px; font-size: 13px; font-weight: 650; color: var(--text-2); }
@@ -1249,6 +1278,7 @@ body.note-page .git-side, body.note-page .ex-side, body:not(.note-page) .note-si
 .mention.m-note { padding: 0 2px; background: none; }
 .mention.m-note .m-label { text-decoration: underline; text-decoration-color: var(--text-3); text-underline-offset: 3px; font-weight: 500; }
 .mention.m-note:hover { background: var(--hover); }
+.mention.m-note.m-gone .m-label { text-decoration: line-through; color: var(--text-3); font-weight: 400; }
 .mention.m-branch .ic { color: var(--green); }
 .mention.m-commit .ic { color: var(--yellow); }
 .mention.m-file .ic { color: var(--accent); }
@@ -1568,6 +1598,7 @@ body.note-page .git-side, body.note-page .ex-side, body:not(.note-page) .note-si
 .db-head:hover .db-open { visibility: visible; }
 .db-gone { display: flex; align-items: center; gap: 7px; padding: 10px 12px; border: 1px dashed var(--border); border-radius: 8px; color: var(--text-3); }
 .db-gone .ic { width: 15px; height: 15px; }
+.db-gone .btn-sm { margin-left: auto; }
 .nt-row.nt-db .nt-icon { color: var(--text-2); }
 
 /* ---------- dashboard sections (reordered by their grip) and links ---------- */

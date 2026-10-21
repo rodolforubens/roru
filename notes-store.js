@@ -11,7 +11,7 @@
 //   mirror.js), its text is a Yjs document (see "Content" below) and its files are in the
 //   `note-files` storage bucket, under "<user id>/files/<id>/<name>".
 // Signing in never changes the notes kept on this computer: they are only copied to the account
-// when the user asks (copyLocalNotes).
+// when the user asks (copyLocalNotes), the ones in the trash with it.
 //
 // A note is a page (`kind` 'page', the default: rich text, with its nested pages as children) or a
 // database (`kind` 'database': no text, its children are its items). Like in Notion, a database
@@ -21,17 +21,22 @@
 // 'board', name, sort, hidden, groupBy, pinned }) to show them.
 // Values by type: text and url a string, number a number, select an option id, multi a list of
 // option ids, date "YYYY-MM-DD", checkbox true, branch { repo (folder path), name }.
-import { desktop, invoke, convertFileSrc } from './platform.js?v=4a0b90d';
-import { db, currentUser } from './account.js?v=4a0b90d';
-import { createMirror, clone, reportStatus } from './mirror.js?v=4a0b90d';
-import { Y, updateYFragment, yDocToProsemirrorJSON } from './vendor/tiptap.js?v=4a0b90d';
-import { noteSchema, fitToSchema } from './editor.js?v=4a0b90d';
+//
+// A deleted note goes to the trash with what is inside it: it gets `trashed` (when), and it and the
+// notes inside it leave every list (getNote, childrenOf…) until it is restored or deleted for good
+// (see "The trash" below).
+import { desktop, invoke, convertFileSrc } from './platform.js?v=0766cdf';
+import { db, currentUser } from './account.js?v=0766cdf';
+import { createMirror, clone, reportStatus } from './mirror.js?v=0766cdf';
+import { Y, updateYFragment, yDocToProsemirrorJSON } from './vendor/tiptap.js?v=0766cdf';
+import { noteSchema, fitToSchema } from './editor.js?v=0766cdf';
 
 const SAVE_DELAY = 300; // ms after the last edit (files on this computer)
 
 let mode = null;             // 'local' (files on this computer), 'account', or null (signed out on the web)
 let dir = null;              // the notes' folder on this computer
-let notes = [];
+let all = [];                // every note, the ones in the trash too
+let notes = [];              // the notes out of the trash (see sift)
 let collections = {};
 const contents = new Map();  // id -> content, once loaded or edited (open editors share it; local only)
 const pending = new Map();   // id -> timer of a content write ('index' for the index)
@@ -55,6 +60,7 @@ export async function initNotes() {
 export async function useAccount(user) {
   flushNotes();
   closeDocs();
+  all = [];
   notes = [];
   collections = {};
   contents.clear();
@@ -76,13 +82,14 @@ async function loadLocal() {
   let version = 3;
   try {
     const data = text ? JSON.parse(text) : {};
-    notes = data.notes || [];
+    all = data.notes || [];
     collections = data.collections || {};
     version = data.version || 1;
   } catch {
-    notes = [];
+    all = [];
     collections = {};
   }
+  sift();
   if (version < 3) await migrate();
   // the webview loads the notes' images straight from their files
   await invoke('allow_assets', { repo: dir }).catch(() => {});
@@ -145,8 +152,8 @@ export function onNotesChange(fn) {
 
 // Collections of notes that are not databases (only looked at) are not saved.
 const saveIndex = () => schedule('index', () => {
-  const used = Object.fromEntries(Object.entries(collections).filter(([key]) => isDatabase(key)));
-  return invoke('write_text', { path: file('index.json'), content: JSON.stringify({ version: 3, notes, collections: used }) });
+  const used = Object.fromEntries(Object.entries(collections).filter(([key]) => lookup(key)?.kind === 'database'));
+  return invoke('write_text', { path: file('index.json'), content: JSON.stringify({ version: 3, notes: all, collections: used }) });
 });
 
 const persist = () => (mode === 'account' ? mirror.write() : mode === 'local' ? saveIndex() : null);
@@ -158,12 +165,13 @@ const persist = () => (mode === 'account' ? mirror.write() : mode === 'local' ? 
 // move into a new top-level database.
 async function migrate() {
   // the index as it was stays next to it, in case something has to be looked up later
-  if (notes.length) await invoke('write_text', { path: file('index-before-databases.json'), content: JSON.stringify({ version: 2, notes, collections }) });
+  if (all.length) await invoke('write_text', { path: file('index-before-databases.json'), content: JSON.stringify({ version: 2, notes: all, collections }) });
   const used = c => c && (c.schema?.length || c.views?.some(v => v.type !== 'list'));
   const raw = (space, parent, title) => {
     const now = Date.now();
     const n = { id: newId(), space, parent, title, kind: 'database', order: -1, created: now, updated: now };
-    notes.push(n);
+    all.push(n);
+    sift();
     return n;
   };
   const linked = doc => {
@@ -179,7 +187,7 @@ async function migrate() {
     const space = key.slice(6);
     const db = raw(space, null, 'Database');
     collections[db.id] = c;
-    for (const n of notes) if (n.space === space && !n.parent && n !== db && n.props && Object.keys(n.props).length) n.parent = db.id;
+    for (const n of all) if (n.space === space && !n.parent && n !== db && n.props && Object.keys(n.props).length) n.parent = db.id;
   }
   for (const [key, c] of Object.entries(old).filter(([k]) => !k.startsWith('space:'))) {
     const page = getNote(key);
@@ -195,14 +203,14 @@ async function migrate() {
     const db = raw(page.space, page.id, 'Database');
     collections[db.id] = c;
     const keep = linked(doc);
-    for (const n of notes) if (n.parent === page.id && n !== db && !keep.has(n.id)) n.parent = db.id;
+    for (const n of all) if (n.parent === page.id && n !== db && !keep.has(n.id)) n.parent = db.id;
     const next = { type: 'doc', content: [...(doc?.content || []), { type: 'database', attrs: { id: db.id } }] };
     contents.set(key, next);
     await invoke('write_text', { path: file(`${key}.json`), content: JSON.stringify(next) });
   }
   // orders count from 0 again under every parent
   const groups = new Map();
-  for (const n of notes) {
+  for (const n of all) {
     const k = `${n.space}\n${n.parent ?? ''}`;
     if (!groups.has(k)) groups.set(k, []);
     groups.get(k).push(n);
@@ -212,6 +220,7 @@ async function migrate() {
 }
 
 function changed(ids = []) {
+  sift();
   if (batching) { batched.push(...ids); return; }
   persist();
   tellAll(ids);
@@ -245,19 +254,35 @@ export const getNote = id => notes.find(n => n.id === id) || null;
 export const notesOf = space => notes.filter(n => n.space === space);
 export const childrenOf = (space, parent = null) =>
   notes.filter(n => n.space === space && (n.parent ?? null) === parent).sort((a, b) => a.order - b.order);
+const lookup = id => all.find(n => n.id === id) || null; // (in the trash too)
 
-// The note's ancestors, from the top of the tree.
+// The note's ancestors, from the top of the tree (a note in the trash has its own too).
 export function pathOf(id) {
   const out = [];
-  for (let n = getNote(getNote(id)?.parent); n; n = getNote(n.parent)) out.unshift(n);
+  for (let n = lookup(lookup(id)?.parent); n; n = lookup(n.parent)) out.unshift(n);
   return out;
 }
 
-export function descendantsOf(id) {
-  const out = [];
-  const walk = parent => notes.filter(n => n.parent === parent).forEach(n => { out.push(n); walk(n.id); });
+// The notes inside a note, at any depth (`trash`: the ones in the trash too).
+export function descendantsOf(id, { trash = false } = {}) {
+  const out = [], list = trash ? all : notes;
+  const walk = parent => list.filter(n => n.parent === parent).forEach(n => { out.push(n); walk(n.id); });
   walk(id);
   return out;
+}
+
+// The notes out of the trash: those that aren't in it, nor inside one that is.
+function sift() {
+  const byId = new Map(all.map(n => [n.id, n])), binned = new Map();
+  const inTrash = n => {
+    if (!binned.has(n.id)) {
+      binned.set(n.id, false); // (a loop of parents ends here)
+      const p = n.parent && byId.get(n.parent);
+      binned.set(n.id, !!n.trashed || (!!p && inTrash(p)));
+    }
+    return binned.get(n.id);
+  };
+  notes = all.filter(n => !inTrash(n));
 }
 
 // `kind`: 'page' or 'database' (see the top of this file).
@@ -267,7 +292,7 @@ export function createNote({ space, parent = null, title = '', props = null, kin
   const note = { id: newId(), space, parent, title, order: siblings.length ? siblings[siblings.length - 1].order + 1 : 0, created: now, updated: now };
   if (kind === 'database') note.kind = 'database';
   if (props && Object.keys(props).length) note.props = { ...props };
-  notes.push(note);
+  all.push(note);
   if (mode === 'account') newDoc(note.id); // (nothing to read: it starts empty)
   else contents.set(note.id, null);
   changed([note.id]);
@@ -305,12 +330,12 @@ export function moveNote(id, parent, before = null) {
   return true;
 }
 
-// Moves a note, with everything inside it, to the top of another space; returns the moved ids.
-// Its values of its old database's properties stay behind.
+// Moves a note, with everything inside it (what is in the trash too), to the top of another space;
+// returns the moved ids. Its values of its old database's properties stay behind.
 export function moveToSpace(id, space) {
   const n = getNote(id);
   if (!n || n.space === space) return [];
-  const moved = [n, ...descendantsOf(id)];
+  const moved = [n, ...descendantsOf(id, { trash: true })];
   const top = childrenOf(space, null);
   if (n.parent && isDatabase(n.parent)) delete n.props;
   n.parent = null;
@@ -320,10 +345,48 @@ export function moveToSpace(id, space) {
   return moved.map(m => m.id);
 }
 
-// Deletes a note and its sub-pages; returns their ids.
-export function deleteNote(id) {
-  const ids = [id, ...descendantsOf(id).map(n => n.id)];
-  notes = notes.filter(n => !ids.includes(n.id));
+// ---------- the trash ----------
+
+// Moves a note to the trash, with what is inside it; returns the ids that left the lists.
+export function trashNote(id) {
+  const n = getNote(id);
+  if (!n) return [];
+  const ids = [id, ...descendantsOf(id).map(d => d.id)];
+  n.trashed = Date.now();
+  changed(ids);
+  return ids;
+}
+
+// The notes moved to the trash (each one deleted on its own: not the ones inside them), of the given
+// spaces, the last deleted first.
+export const trashOf = spaces => all.filter(n => n.trashed && spaces.includes(n.space)).sort((a, b) => b.trashed - a.trashed);
+
+// A note in the trash (or inside one that is), or null.
+export const trashedNote = id => (getNote(id) ? null : lookup(id));
+
+// Puts a note of the trash back where it was, with what is inside it; when the note it was in is gone
+// (or still in the trash), at the top of its space. Returns the ids that came back.
+export function restoreNote(id) {
+  const n = lookup(id);
+  if (!n?.trashed) return [];
+  delete n.trashed;
+  const parent = n.parent && getNote(n.parent);
+  if (n.parent && (!parent || parent.space !== n.space)) {
+    const top = childrenOf(n.space, null);
+    n.parent = null;
+    n.order = top.length ? top[top.length - 1].order + 1 : 0;
+  }
+  sift();
+  const ids = [id, ...descendantsOf(id).map(d => d.id)];
+  changed(ids);
+  return ids;
+}
+
+// Deletes a note for good, with what is inside it (in the trash or not); returns their ids.
+export function deleteForever(id) {
+  if (!lookup(id)) return [];
+  const ids = [id, ...descendantsOf(id, { trash: true }).map(n => n.id)];
+  all = all.filter(n => !ids.includes(n.id));
   for (const x of ids) {
     delete collections[x];
     contents.delete(x);
@@ -339,10 +402,10 @@ export function deleteNote(id) {
   return ids;
 }
 
-// Moves every note of a space to another one (when a project is deleted, its notes go home).
-// The properties of its top-level notes join the other space's.
+// Moves every note of a space to another one (when a project is deleted, its notes go home, the
+// ones in the trash too). The properties of its top-level notes join the other space's.
 export function moveSpace(from, to) {
-  const moved = notesOf(from);
+  const moved = all.filter(n => n.space === from);
   const old = collections[`space:${from}`];
   delete collections[`space:${from}`];
   if (old?.schema.length) {
@@ -379,7 +442,8 @@ export function getCollection(key) {
   return (collections[key] ||= { schema: [], views: [{ id: newId(), type: 'list', name: 'List' }], active: null });
 }
 
-const membersOf = key => notes.filter(n => collectionKey(n.space, n.parent ?? null) === key);
+// (the items in the trash keep up with their database too, for when they come back)
+const membersOf = key => all.filter(n => collectionKey(n.space, n.parent ?? null) === key);
 const findProp = (key, id) => getCollection(key).schema.find(p => p.id === id) || null;
 
 export function addProperty(key, { name, type }) {
@@ -629,7 +693,7 @@ export async function loadContent(id) {
 // Replaces the note's content (JSON). In the account, only what differs is changed in its document,
 // so what is being typed elsewhere stays.
 export function saveContent(id, doc) {
-  const n = getNote(id);
+  const n = lookup(id);
   if (!n) return;
   n.updated = Date.now();
   if (mode === 'account') {
@@ -871,7 +935,7 @@ addEventListener('online', () => { for (const d of docs.values()) send(d); });
 // A note as a row: its metadata, and a database's collection (properties and views).
 function rowsOf() {
   return {
-    notes: new Map(notes.map(n => {
+    notes: new Map(all.map(n => {
       const { id, ...data } = n;
       if (n.kind === 'database' && collections[id]) data.collection = collections[id];
       return [id, { id, data: clone(data) }];
@@ -881,16 +945,19 @@ function rowsOf() {
 
 // The notes from the rows. The note objects are kept (updated in place), so the ones the UI holds
 // stay current; the collections of what isn't a database (only looked at) stay as they are.
+let binnedElsewhere = []; // the notes moved to the trash elsewhere, told with the ones deleted
 function build(rows) {
-  const old = new Map(notes.map(n => [n.id, n]));
+  const old = new Map(all.map(n => [n.id, n])), shown = notes.map(n => n.id);
   for (const key of Object.keys(collections)) if (rows.notes.has(key)) delete collections[key];
-  notes = [...rows.notes.values()].map(r => {
+  all = [...rows.notes.values()].map(r => {
     const { collection, ...data } = clone(r.data);
     if (collection) collections[r.id] = collection;
     const n = old.get(r.id) || {};
     for (const k of Object.keys(n)) delete n[k];
     return Object.assign(n, data, { id: r.id });
   });
+  sift();
+  binnedElsewhere.push(...shown.filter(id => !getNote(id) && lookup(id)));
 }
 
 const mirror = createMirror({
@@ -904,7 +971,8 @@ const mirror = createMirror({
       const d = docs.get(id);
       if (d) { clearTimeout(d.timer); d.ydoc.destroy(); docs.delete(id); }
     }
-    if (mode === 'account') tellAll(notes.map(n => n.id), gone);
+    const binned = binnedElsewhere.splice(0);
+    if (mode === 'account') tellAll(notes.map(n => n.id), [...gone, ...binned]);
   },
 });
 
@@ -923,7 +991,7 @@ async function readLocalIndex() {
 // The notes of this computer that the account doesn't have (signed in on the desktop app).
 export async function localOnlyNotes() {
   if (!desktop || mode !== 'account') return [];
-  return (await readLocalIndex()).notes.filter(n => !getNote(n.id));
+  return (await readLocalIndex()).notes.filter(n => !lookup(n.id));
 }
 
 // Copies the notes of this computer that the account doesn't have, with their text, databases and
@@ -932,11 +1000,11 @@ export async function localOnlyNotes() {
 export async function copyLocalNotes(onProgress = () => {}) {
   if (!desktop || mode !== 'account') return 0;
   const index = await readLocalIndex();
-  const fresh = index.notes.filter(n => !getNote(n.id));
+  const fresh = index.notes.filter(n => !lookup(n.id));
   if (!fresh.length) return 0;
   await batch(() => {
     for (const n of fresh) {
-      notes.push(clone(n));
+      all.push(clone(n));
       if (index.collections[n.id]) collections[n.id] = clone(index.collections[n.id]);
       newDoc(n.id);
     }

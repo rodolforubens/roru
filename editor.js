@@ -2,8 +2,8 @@
 // to-do lists, quotes, code blocks, links, images, tables and database blocks, with Markdown-like
 // shortcuts ("# ", "- ", "[] "...), a "/" menu to change or insert blocks, and "@" mentions of
 // notes, files, commits and branches.
-import { Editor, Extension, Node, StarterKit, TaskList, TaskItem, Placeholder, Mention, Image, TableKit, Markdown, Suggestion, PluginKey, Collaboration, getSchema } from './vendor/tiptap.js?v=4a0b90d';
-import { esc, icon } from './util.js?v=4a0b90d';
+import { Editor, Extension, Node, StarterKit, TaskList, TaskItem, Placeholder, Mention, Image, TableKit, Markdown, Suggestion, PluginKey, Collaboration, getSchema } from './vendor/tiptap.js?v=0766cdf';
+import { esc, icon } from './util.js?v=0766cdf';
 
 // The blocks and marks of a note's content. With a Yjs document (`opts.ydoc`) the undo history is
 // the collaboration's own.
@@ -143,7 +143,7 @@ export async function addImages(editor, opts, files, at = null) {
 }
 
 // `opts`: { content, onChange(doc) | ydoc (a Yjs document the editor edits and that saves itself),
-// mentions(query) -> Promise<items>, mentionView(attrs) -> { icon, label, title },
+// mentions(query) -> Promise<items>, mentionView(attrs) -> { icon, label, title, gone (deleted) },
 // openMention(attrs, event), openLink(href), fileUrl(src), renderDatabase(el, id, { remove }),
 // uploadImage(file) -> Promise<src> (pictures pasted, dropped or added with "/image"), onError(error),
 // commands: extra "/" items [{ title, hint, icon, run(editor, range) }] }.
@@ -209,7 +209,7 @@ function MentionNode(opts) {
       return ({ node }) => {
         const dom = document.createElement('span');
         const v = opts.mentionView(node.attrs);
-        dom.className = `mention m-${node.attrs.kind}`;
+        dom.className = `mention m-${node.attrs.kind}${v.gone ? ' m-gone' : ''}`;
         dom.contentEditable = 'false';
         dom.dataset.kind = node.attrs.kind;
         dom.dataset.id = node.attrs.id;

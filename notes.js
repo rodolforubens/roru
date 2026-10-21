@@ -5,16 +5,16 @@
 // below as it was. Pages nest in other pages through their text (a link to the nested page, or a
 // database block); databases show in the tree as one item. Tabs and spaces belong to app.js (see
 // initNotesUi); the table and board views and the properties are in views.js.
-import * as S from './notes-store.js?v=4a0b90d';
-import * as G from './git.js?v=4a0b90d';
-import { createEditor, pickImages, addImages } from './editor.js?v=4a0b90d';
-import { pickEmoji } from './emoji.js?v=4a0b90d';
-import { toMarkdown } from './markdown.js?v=4a0b90d';
-import { sharedPath } from './projects.js?v=4a0b90d';
-import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView } from './views.js?v=4a0b90d';
-import { importNotion } from './notion-import.js?v=4a0b90d';
-import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative } from './util.js?v=4a0b90d';
-import { desktop, invoke, isMobile } from './platform.js?v=4a0b90d';
+import * as S from './notes-store.js?v=0766cdf';
+import * as G from './git.js?v=0766cdf';
+import { createEditor, pickImages, addImages } from './editor.js?v=0766cdf';
+import { pickEmoji } from './emoji.js?v=0766cdf';
+import { toMarkdown } from './markdown.js?v=0766cdf';
+import { sharedPath } from './projects.js?v=0766cdf';
+import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView } from './views.js?v=0766cdf';
+import { importNotion } from './notion-import.js?v=0766cdf';
+import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative } from './util.js?v=0766cdf';
+import { desktop, invoke, isMobile } from './platform.js?v=0766cdf';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -33,8 +33,9 @@ const topOpen = () => store('notesOpen') || 'side';
 const openPref = (parent = null) => S.getNote(S.openInSource(parent))?.openIn || topOpen(); // inside `parent`
 const openPrefOf = id => openPref(S.getNote(id)?.parent ?? null); // where a note opens
 
-// `h`: { space(), spaceName(space), spaces(), folders() (of the current space), activeNote(),
-// openTab(id, { replace }), closeTabs(ids), reveal(mention attrs), toast, showMenu, modal, confirmBox, copy, pickFolders }.
+// `h`: { space(), spaceName(space), spaces(), folders() (of the current space), activeNote(), inRepo()
+// (a repository's tab is shown), openTab(id, { replace }), closeTabs(ids), reveal(mention attrs), toast,
+// showMenu, modal, confirmBox, copy, pickFolders }.
 export async function initNotesUi(h) {
   host = h;
   initViews({
@@ -53,12 +54,19 @@ export async function initNotesUi(h) {
     for (const p of cardPanels) if (p.el.isConnected) paintCards(p); else cardPanels.delete(p);
     for (const p of pages) if (p.el.isConnected) paintMeta(p); else destroyPage(p);
     repaintViews();
-    // mentions of renamed notes show their new title
-    for (const id of ids) document.querySelectorAll(`.mention.m-note[data-id="${CSS.escape(id)}"] .m-label`).forEach(el => (el.textContent = noteTitle(id)));
-    // database blocks show their database's title (or that it is gone)
+    // mentions of renamed notes show their new title (and the deleted ones, that they are)
+    for (const id of [...ids, ...(removed || [])]) {
+      const v = mentionView({ kind: 'note', id });
+      document.querySelectorAll(`.mention.m-note[data-id="${CSS.escape(id)}"]`).forEach(el => {
+        el.querySelector('.m-label').textContent = v.label;
+        el.title = v.title;
+        el.classList.toggle('m-gone', !!v.gone);
+      });
+    }
+    // database blocks show their database's title (or that it is gone, or back)
     for (const block of document.querySelectorAll('.db-block')) {
       const db = S.getNote(block.dataset.id), name = block.querySelector('.db-name');
-      if (!db && name) block.innerHTML = `<div class="db-gone">${icon('table')}This database was deleted</div>`;
+      if (!db !== !name) block._paint?.();
       else if (name && document.activeElement !== name && name.value !== db.title) name.value = db.title;
     }
     if (peek && !S.getNote(peek.page.id)) closePeek();
@@ -66,6 +74,14 @@ export async function initNotesUi(h) {
   addEventListener('keydown', e => {
     if (e.key !== 'Escape' || e.defaultPrevented || !peek || $('#modal-root').childElementCount || !$('#menu').hidden) return;
     closePeek();
+  });
+  // Ctrl+Z puts back the notes moved to the trash last (out of the text being typed, and of the
+  // repositories' tabs)
+  addEventListener('keydown', e => {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'z' || e.defaultPrevented || !undoable.length) return;
+    if (e.target.closest?.('input, textarea, [contenteditable="true"]') || $('#modal-root').childElementCount || host.inRepo()) return;
+    e.preventDefault();
+    undoDelete();
   });
 }
 
@@ -160,7 +176,7 @@ function notice(text) {
   return el;
 }
 
-// Deleted databases leave the text of the pages they were shown in.
+// Databases deleted for good leave the text of the pages they were shown in.
 async function dropBlocks(dbs) {
   for (const { id, parent } of dbs) {
     const open = [...pages].find(p => p.id === parent && p.editor);
@@ -176,35 +192,121 @@ async function dropBlocks(dbs) {
   }
 }
 
-async function deleteNote(id) {
-  const n = S.getNote(id);
-  if (!n) return;
-  const subs = S.descendantsOf(id).length;
-  const ok = n.kind === 'database'
-    ? await host.confirmBox('Delete database', `Delete the database "${noteTitle(id)}"${subs ? ` and its ${plural(subs, 'item')}` : ''}? This can't be undone.`, 'Delete')
-    : await host.confirmBox('Delete page', `Delete "${noteTitle(id)}"${subs ? ` and the ${plural(subs, 'page')} inside it` : ''}? This can't be undone.`, 'Delete');
-  if (!ok) return;
-  const dbs = [n, ...S.descendantsOf(id)].filter(x => x.kind === 'database').map(x => ({ id: x.id, parent: x.parent }));
-  const ids = S.deleteNote(id);
-  host.closeTabs(ids);
-  if (peek && ids.includes(peek.page.id)) closePeek();
-  dropBlocks(dbs);
-}
+// ---------- the trash ----------
+//
+// Deleting moves notes to the trash, with what is inside them: Ctrl+Z (or the toast's Undo) puts
+// them back, and the trash (openTrash) restores them later or deletes them for good. The text they
+// are linked or shown in keeps them, shown as deleted until they come back.
 
-// Several notes (a selection in a view) and their sub-pages, after one confirmation (unless the
-// caller asked already: `confirm` false).
+const undoable = []; // what was moved to the trash here, the last at the end: { ids, shown ({ id, how }: the note open then) }
+const named = (ids, title = noteTitle) => (ids.length === 1 ? `"${title(ids[0])}"` : plural(ids.length, 'note'));
+const trashedTitle = id => S.trashedNote(id)?.title || 'Untitled';
+
+// Notes (one, or a selection in a view) and what is inside them, after asking (unless the caller
+// asked already: `confirm` false).
 async function deleteNotes(ids, { confirm = true } = {}) {
   ids = ids.filter(id => S.getNote(id));
+  ids = ids.filter(id => !S.pathOf(id).some(a => ids.includes(a.id))); // (the ones inside another go with it)
   if (!ids.length) return;
-  if (confirm && ids.length === 1) return deleteNote(ids[0]);
-  const subs = new Set(ids.flatMap(id => S.descendantsOf(id).map(n => n.id)).filter(x => !ids.includes(x))).size;
-  if (confirm && !(await host.confirmBox('Delete notes', `Delete ${ids.length} notes${subs ? ` and the ${plural(subs, 'page')} inside them` : ''}? This can't be undone.`, 'Delete'))) return;
-  const dbs = ids.flatMap(id => [S.getNote(id), ...S.descendantsOf(id)]).filter(x => x?.kind === 'database').map(x => ({ id: x.id, parent: x.parent }));
+  const subs = ids.reduce((k, id) => k + S.descendantsOf(id).length, 0), n = S.getNote(ids[0]);
+  if (confirm) {
+    const ok = ids.length > 1 ? await host.confirmBox('Delete notes', `Move ${ids.length} notes${subs ? ` and the ${plural(subs, 'page')} inside them` : ''} to the trash?`, 'Move to trash')
+      : n.kind === 'database' ? await host.confirmBox('Delete database', `Move the database "${noteTitle(n.id)}"${subs ? ` and its ${plural(subs, 'item')}` : ''} to the trash?`, 'Move to trash')
+      : await host.confirmBox('Delete page', `Move "${noteTitle(n.id)}"${subs ? ` and the ${plural(subs, 'page')} inside it` : ''} to the trash?`, 'Move to trash');
+    if (!ok || !ids.every(id => S.getNote(id))) return;
+  }
+  const what = named(ids);
+  const inside = new Set(ids.flatMap(id => [id, ...S.descendantsOf(id).map(d => d.id)]));
+  const shown = inside.has(host.activeNote()) ? { id: host.activeNote(), how: 'tab' } : peek && inside.has(peek.page.id) ? { id: peek.page.id, how: peek.mode } : null;
   const gone = [];
-  await S.batch(() => { for (const id of ids) if (S.getNote(id)) gone.push(...S.deleteNote(id)); });
+  await S.batch(() => { for (const id of ids) gone.push(...S.trashNote(id)); });
   host.closeTabs(gone);
   if (peek && gone.includes(peek.page.id)) closePeek();
-  dropBlocks(dbs);
+  const entry = { ids, shown };
+  undoable.push(entry);
+  host.toast(`Moved ${what} to the trash`, 'ok', '', { label: 'Undo', run: () => undoDelete(entry) });
+}
+
+// Puts back what was moved to the trash last (Ctrl+Z), or the given notes (the toast's Undo), and
+// opens again the one that was open.
+async function undoDelete(entry = undoable.at(-1)) {
+  if (!entry || !undoable.includes(entry)) return;
+  undoable.splice(undoable.indexOf(entry), 1);
+  const ids = entry.ids.filter(id => S.trashedNote(id)?.trashed); // (not restored or deleted for good meanwhile)
+  if (!ids.length) return;
+  const what = named(ids, trashedTitle);
+  await S.batch(() => { for (const id of ids) S.restoreNote(id); });
+  host.toast(`Restored ${what}`, 'ok');
+  if (entry.shown && S.getNote(entry.shown.id)) openNote(entry.shown.id, entry.shown.how);
+}
+
+// Restores a note of the trash; `open` shows it afterwards.
+function restore(id, { open = false } = {}) {
+  const what = named([id], trashedTitle), was = S.trashedNote(id)?.parent ?? null;
+  if (!S.restoreNote(id).length) return;
+  const n = S.getNote(id);
+  if (n.parent) expand(n.parent);
+  if (open) return openNote(id);
+  const moved = was && !n.parent ? `The note it was in is gone or in the trash: it is at the top of ${host.spaceName(n.space)}` : '';
+  host.toast(`Restored ${what}`, 'ok', moved, { label: 'Open', run: () => openNote(id) });
+}
+
+// Deletes notes of the trash for good (and what is inside them), after asking.
+async function deleteForever(ids) {
+  if (!ids.length) return false;
+  const ok = ids.length === 1
+    ? await host.confirmBox('Delete forever', `Delete ${named(ids, trashedTitle)}${S.descendantsOf(ids[0], { trash: true }).length ? ' and what is inside it' : ''} for good? This can't be undone.`, 'Delete forever')
+    : await host.confirmBox('Empty the trash', `Delete the ${plural(ids.length, 'note')} in the trash for good? This can't be undone.`, 'Delete forever');
+  if (!ok) return false;
+  const dbs = ids.flatMap(id => [S.trashedNote(id), ...S.descendantsOf(id, { trash: true })]).filter(x => x?.kind === 'database').map(x => ({ id: x.id, parent: x.parent }));
+  const gone = [];
+  await S.batch(() => { for (const id of ids) gone.push(...S.deleteForever(id)); });
+  host.closeTabs(gone);
+  dropBlocks(dbs.filter(d => !gone.includes(d.parent)));
+  return true;
+}
+
+// The trash: the notes deleted in every space (the last first), to restore them or delete them for good.
+export function openTrash(query = '') {
+  const root = $('#modal-root');
+  root.innerHTML = `<div class="modal-back"><div class="modal trash" tabindex="-1">
+      <div class="tr-head"><h3>Trash</h3><button class="nt-btn" data-tr="close" title="Close (Esc)">${icon('close')}</button></div>
+      <input type="text" class="tr-q" placeholder="Search the trash" spellcheck="false">
+      <div class="tr-list"></div>
+      <div class="tr-foot"><span>Deleted pages and databases stay here until they are deleted for good.</span>
+        <button class="btn-sm danger" data-tr="empty">Empty trash</button></div>
+    </div></div>`;
+  const list = $('.tr-list', root), q = $('.tr-q', root);
+  q.value = query;
+  const shown = () => S.trashOf(host.spaces()).filter(n => (n.title || 'untitled').toLowerCase().includes(q.value.trim().toLowerCase()));
+  const paint = () => {
+    const db = n => n.kind === 'database';
+    list.innerHTML = shown().map(n => `<div class="tr-row" data-id="${esc(n.id)}">
+        ${icon(n.icon || (db(n) ? 'table' : 'note'), 'tr-icon')}
+        <div class="tr-text"><div class="tr-title ${n.title ? '' : 'untitled'}">${esc(n.title || (db(n) ? 'Untitled database' : 'Untitled'))}</div>
+          <div class="tr-path">${esc([host.spaceName(n.space), ...S.pathOf(n.id).map(a => a.title || 'Untitled')].join(' / '))} · deleted ${esc(fmtRelative(n.trashed / 1000))}</div></div>
+        <button class="nt-btn" data-tr="restore" title="Restore">${icon('undo')}</button>
+        <button class="nt-btn tr-del" data-tr="delete" title="Delete forever">${icon('trash')}</button>
+      </div>`).join('') || `<div class="tr-empty">${q.value.trim() ? 'Nothing found' : 'The trash is empty'}</div>`;
+    $('[data-tr="empty"]', root).disabled = !S.trashOf(host.spaces()).length;
+  };
+  const off = S.onNotesChange(() => (list.isConnected ? paint() : off()));
+  const close = () => { off(); root.innerHTML = ''; };
+  // (asking takes the place of the trash, which comes back after)
+  const forever = async ids => { off(); await deleteForever(ids); openTrash(q.value); };
+  $('.modal', root).addEventListener('click', e => {
+    const b = e.target.closest('[data-tr]'), id = e.target.closest('.tr-row')?.dataset.id;
+    if (!b) return;
+    if (b.dataset.tr === 'close') close();
+    else if (b.dataset.tr === 'restore') restore(id);
+    else if (b.dataset.tr === 'delete') forever([id]);
+    else if (b.dataset.tr === 'empty') forever(S.trashOf(host.spaces()).map(n => n.id));
+  });
+  $('.modal-back', root).addEventListener('mousedown', e => { if (e.target.classList.contains('modal-back')) close(); });
+  $('.modal', root).addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); close(); } });
+  q.addEventListener('input', paint);
+  paint();
+  if (matchMedia('(hover: hover)').matches) q.focus();
 }
 
 const fileName = title => (title || 'Untitled').replace(/[<>:"/\\|?*\x00-\x1f]/g, '-').replace(/[. ]+$/, '').slice(0, 120) || 'Untitled';
@@ -347,7 +449,7 @@ export function noteMenuItems(id, ctx = 'list') {
     { label: 'Copy as Markdown', run: async () => host.copy(await markdownOf(id)) },
     { label: 'Export as Markdown…', run: () => exportNote(id) },
     '-',
-    { label: 'Delete…', danger: true, run: () => deleteNote(id) },
+    { label: 'Delete…', danger: true, run: () => deleteNotes([id]) },
   ];
 }
 
@@ -477,8 +579,12 @@ const openItem = (id, e) => openNote(id, e?.ctrlKey || e?.metaKey ? 'tab' : unde
 // A database shown in a page's text: its title (a click opens it on its own) and its views.
 function renderDatabaseBlock(el, id, page) {
   const db = S.getNote(id);
+  el._paint = () => renderDatabaseBlock(el, id, page); // (when it goes to the trash or comes back)
   if (!db) {
-    el.innerHTML = `<div class="db-gone">${icon('table')}This database was deleted</div>`;
+    const binned = S.trashedNote(id);
+    el.innerHTML = `<div class="db-gone">${icon('table')}<span>${binned ? `The database ${esc(named([id], trashedTitle))} is in the trash` : 'This database was deleted'}</span>
+      ${binned ? '<button class="btn-sm db-restore">Restore</button>' : ''}</div>`;
+    el.querySelector('.db-restore')?.addEventListener('click', () => restore(id));
     return;
   }
   el.innerHTML = `<div class="db-head">${icon('table')}<input class="db-name" spellcheck="false" placeholder="Untitled database" value="${esc(db.title)}">
@@ -669,6 +775,7 @@ function setPeekMode(page, mode) {
 
 // Following a link to another note: the tab or the peek goes there (Ctrl+click opens a new tab).
 function goTo(page, id, e, { focusTitle = false } = {}) {
+  if (S.trashedNote(id)) return host.toast(`${named([id], trashedTitle)} is in the trash`, 'info', '', { label: 'Restore', run: () => restore(id, { open: true }) });
   if (!S.getNote(id)) return host.toast('This note was deleted');
   if (e?.ctrlKey || e?.metaKey) return openNote(id, 'tab');
   if (page.place === 'peek') return peekNote(id, peek.mode, { focusTitle });
@@ -731,6 +838,8 @@ export function renderNotesPanel(el, space) {
       '-',
       { label: 'Import from Notion…', run: () => importFromNotion(space, null) },
       ...(desktop ? [{ label: 'Export all notes as Markdown…', run: () => exportSpace(space) }] : []),
+      '-',
+      { label: 'Trash', run: () => openTrash() },
     ]);
   });
   if (cards) mountCards($('.nt-body', el), space);
@@ -896,7 +1005,8 @@ function paintTree(t) {
   const top = S.childrenOf(t.space, t.parent ?? null);
   t.el.innerHTML = (t.sidebar ? `<div class="nt-side-head">Notes<span class="spacer"></span>
       <button class="nt-btn" data-nt="new-db" title="New database">${icon('table')}</button><button class="nt-btn" data-nt="new" title="New page (Ctrl+N)">${icon('plus')}</button></div>` : '')
-    + (top.length ? top.map(n => row(n, 0)).join('') : `<div class="nt-empty">${t.parent ? 'No items yet' : 'No pages yet'}</div>`);
+    + (top.length ? top.map(n => row(n, 0)).join('') : `<div class="nt-empty">${t.parent ? 'No items yet' : 'No pages yet'}</div>`)
+    + (t.sidebar ? `<button class="nt-trash" data-nt="trash">${icon('trash')}<span>Trash</span></button>` : '');
 }
 
 function bindTree(t) {
@@ -906,6 +1016,7 @@ function bindTree(t) {
     const b = e.target.closest('[data-nt]'), row = rowOf(e), id = row?.dataset.note;
     if (b?.dataset.nt === 'new') return newNote({ space: t.space, open: 'tab' });
     if (b?.dataset.nt === 'new-db') return newDatabase({ space: t.space, open: 'tab' });
+    if (b?.dataset.nt === 'trash') return openTrash();
     if (!row) return;
     if (b?.dataset.nt === 'toggle') { expand(id, !expanded.has(id)); return paintTree(t); }
     if (b?.dataset.nt === 'add') return newNote({ space: t.space, parent: id, open: t.sidebar ? 'tab' : undefined });
@@ -985,7 +1096,11 @@ function bindTree(t) {
 function mentionView(a) {
   const where = a.repo ? folderName(a.repo) : '';
   switch (a.kind) {
-    case 'note': return { icon: noteIcon(a.id), label: S.getNote(a.id) ? noteTitle(a.id) : 'Deleted note', title: 'Open the note' };
+    case 'note': {
+      if (S.getNote(a.id)) return { icon: noteIcon(a.id), label: noteTitle(a.id), title: 'Open the note' };
+      const binned = S.trashedNote(a.id);
+      return { icon: binned?.icon || (binned?.kind === 'database' ? 'table' : 'note'), label: binned ? trashedTitle(a.id) : 'Deleted note', title: binned ? 'In the trash' : 'Deleted', gone: true };
+    }
     case 'file': return { icon: 'file', label: a.label || a.id.split('/').pop(), title: `${where}/${a.id}` };
     case 'commit': return { icon: 'commit', label: a.label || String(a.id).slice(0, 7), title: `Commit ${a.id} in ${where}` };
     case 'branch': return { icon: 'branch', label: a.id, title: `Branch ${a.id} in ${where}` };

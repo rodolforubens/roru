@@ -13,7 +13,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Roru">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <link rel="stylesheet" href="styles.css?v=4a0b90d">
+  <link rel="stylesheet" href="styles.css?v=0766cdf">
   <!-- the web page starts signed out (only the sign-in shows) until the account is read (see app.js) -->
   <script>
     if (!window.__TAURI__) document.documentElement.classList.add('web', 'signed-out');
@@ -21,7 +21,7 @@
     // the desktop app has no native title bar: macOS keeps its own buttons, over the tab bar
     if (window.__TAURI__ && /Mac/.test(navigator.platform)) document.documentElement.classList.add('mac');
   </script>
-  <script type="module" src="app.js?v=4a0b90d"></script>
+  <script type="module" src="app.js?v=0766cdf"></script>
 </head>
 <body>
   <nav id="rail"></nav>

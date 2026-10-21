@@ -1,19 +1,19 @@
-import * as G from './git.js?v=4a0b90d';
-import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=4a0b90d';
-import { renderDiff, renderSubmodule, parseSubmoduleLog } from './diff.js?v=4a0b90d';
-import { partialPatch } from './patch.js?v=4a0b90d';
-import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=4a0b90d';
-import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=4a0b90d';
-import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=4a0b90d';
-import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=4a0b90d';
-import * as P from './projects.js?v=4a0b90d';
-import { syncStatus, onSyncStatus } from './mirror.js?v=4a0b90d';
-import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=4a0b90d';
-import * as S from './notes-store.js?v=4a0b90d';
-import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=4a0b90d';
-import * as M from './mobile.js?v=4a0b90d';
-import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=4a0b90d';
-import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=4a0b90d';
+import * as G from './git.js?v=0766cdf';
+import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=0766cdf';
+import { renderDiff, renderSubmodule, parseSubmoduleLog } from './diff.js?v=0766cdf';
+import { partialPatch } from './patch.js?v=0766cdf';
+import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=0766cdf';
+import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=0766cdf';
+import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=0766cdf';
+import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=0766cdf';
+import * as P from './projects.js?v=0766cdf';
+import { syncStatus, onSyncStatus } from './mirror.js?v=0766cdf';
+import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=0766cdf';
+import * as S from './notes-store.js?v=0766cdf';
+import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=0766cdf';
+import * as M from './mobile.js?v=0766cdf';
+import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=0766cdf';
+import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=0766cdf';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -3398,6 +3398,7 @@ onAccount(accountChanged);
     // (the web page has no folders to mention or to take branches from)
     folders: () => (!desktop ? [] : (currentProject() && P.folderPaths(currentProject())) ?? tabs.list.filter(k => !noteOf(k))),
     activeNote: () => state.note,
+    inRepo: () => !!state.repo,
     openTab: (id, opts) => openNoteTab(id, opts),
     closeTabs: closeNoteTabs,
     reveal: revealMention,
