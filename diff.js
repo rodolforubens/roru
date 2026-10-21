@@ -1,9 +1,9 @@
 // Diff rendering (unified or side-by-side split view), with buttons to stage or unstage each
 // hunk and selectable lines when asked. Submodule changes and Git LFS pointer files are shown
 // as summaries instead.
-import { esc, fmtSize } from './util.js?v=7fcf47a';
-import { highlighterFor } from './highlight.js?v=7fcf47a';
-import { parseDiff, canStageParts, MAX_LINES } from './patch.js?v=7fcf47a';
+import { esc, fmtSize } from './util.js?v=6db099e';
+import { highlighterFor } from './highlight.js?v=6db099e';
+import { parseDiff, canStageParts, MAX_LINES } from './patch.js?v=6db099e';
 
 // Adds syntax-highlighted html to each line. The old side (context + removed lines) and
 // the new side (context + added lines) are tokenized separately so that a comment or

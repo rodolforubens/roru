@@ -3,10 +3,10 @@
 // Typing in the search box enters a transient search mode: the tree and the contents only show the
 // matching files and folders, until the search is cleared.
 // Also used for folders that are not Git repositories ("plain" folders), without the Git parts.
-import * as G from './git.js?v=7fcf47a';
-import { esc, fmtDate, fmtRelative, fmtSize, debounce, store, icon, fileIcon } from './util.js?v=7fcf47a';
-import { highlighterFor } from './highlight.js?v=7fcf47a';
-import { invoke, convertFileSrc } from './platform.js?v=7fcf47a';
+import * as G from './git.js?v=6db099e';
+import { esc, fmtDate, fmtRelative, fmtSize, debounce, store, icon, fileIcon } from './util.js?v=6db099e';
+import { highlighterFor } from './highlight.js?v=6db099e';
+import { invoke, convertFileSrc } from './platform.js?v=6db099e';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -50,6 +50,8 @@ function newView(saved = {}) {
   return {
     dir: saved.dir || '',             // folder shown in the contents ("" is the root)
     selected: saved.selected ?? null, // selected item, or null for the folder itself
+    picks: new Set(),                 // every selected item, when more than one is (Ctrl/Shift+click)
+    anchor: null,                     // where a Shift+click range starts
     open: new Set(saved.open || []),  // folders expanded in the tree
     back: [], forward: [],            // navigation history
     tab: 'preview',                   // tab of the details
@@ -78,6 +80,9 @@ const rootEntry = () => ({ name: rootName(), path: '', dir: true });
 const here = () => (view().query ? view().scope : view().dir);
 // The item the details are about: the selection, or else the folder being shown.
 const focusPath = () => view().selected ?? here();
+// The selected items: several, the one, or none.
+const chosen = () => { const v = view(); return v.picks.size ? [...v.picks] : v.selected != null ? [v.selected] : []; };
+const isChosen = path => view().picks.has(path) || path === view().selected;
 const active = () => !!host.repo() && host.repo() === repo && document.body.classList.contains('mode-explorer') && !!$('#main .explorer');
 const assetUrl = e => `${convertFileSrc(fullPath(e.path))}?v=${e.modified || 0}`;
 
@@ -86,7 +91,7 @@ const assetUrl = e => `${convertFileSrc(fullPath(e.path))}?v=${e.modified || 0}`
 // =====================================================================
 
 // `h`: { repo(), plain(), status(), submodules(), head(), toast, showMenu, copy, bindSplitters,
-// saveSoon(), revealCommit(sha, path), revealChange(path), terminal(fullPath) }.
+// saveSoon(), revealCommit(sha, path), revealChange(path), terminal(fullPath), confirmBox, refresh() }.
 export function initExplorer(h) {
   host = h;
   bindSidebar();
@@ -394,6 +399,7 @@ function paintBar(list) {
   if (list && v.query) {
     count = `${plural(list.length, 'result')}${search?.truncated ? ' (more not shown)' : ''}${search?.grep === 'pending' ? ' · searching inside files…' : ''}`;
   } else if (list) count = plural(list.length, 'item');
+  if (list && v.picks.size) count += ` · ${v.picks.size.toLocaleString('en-US')} selected`;
   const grid = gridView();
   bar.innerHTML = `${nav('back', 'back', v.query ? 'Close the search (Esc)' : 'Back (Alt+Left)', !v.query && !v.back.length)}
     ${nav('forward', 'forward', 'Forward (Alt+Right)', !!v.query || !v.forward.length)}
@@ -409,7 +415,7 @@ function tip(e) {
 }
 
 function itemClasses(base, e, st) {
-  return [base, isIgnored(e) && 'ignored', e.hidden && 'hidden', st && `gs-${tint(st)}`, e.path === view().selected && 'selected'].filter(Boolean).join(' ');
+  return [base, isIgnored(e) && 'ignored', e.hidden && 'hidden', st && `gs-${tint(st)}`, isChosen(e.path) && 'selected'].filter(Boolean).join(' ');
 }
 
 function gridHtml(list) {
@@ -810,7 +816,8 @@ function navigate(dir, { push = true, select = null } = {}) {
     v.forward = [];
   }
   v.dir = dir;
-  v.selected = select;
+  v.selected = v.anchor = select;
+  v.picks.clear();
   for (let d = dir; d; d = parentOf(d)) v.open.add(d);
   pendingReveal = select ?? dir;
   paint();
@@ -840,19 +847,43 @@ function goForward() {
   navigate(to, { push: false, select: parentOf(from) === to && from ? from : null });
 }
 
-function select(path, { scroll = false } = {}) {
+// `picks`: the items selected with it (several, with `path` the one the details are about).
+function select(path, { scroll = false, picks = null, anchor = true } = {}) {
   const v = view();
   v.selected = path;
+  v.picks = picks?.size > 1 ? picks : new Set();
+  if (anchor) v.anchor = path;
   if (v.query && path != null) v.picked = true;
   paintSelection();
   paintDetail();
+  paintBar(contentItems());
   if (scroll && path != null) document.querySelector(`.ex-items [data-path="${CSS.escape(path)}"]`)?.scrollIntoView({ block: 'nearest' });
   host.saveSoon();
 }
 
+// Ctrl+click adds or takes an item out of the selection; Shift+click selects the items from the
+// last one clicked (with Ctrl too, adds them).
+function pick(path, els, { ctrl = false, shift = false } = {}) {
+  const v = view(), paths = els.map(el => el.dataset.path);
+  if (shift) {
+    let a = paths.indexOf(v.anchor ?? v.selected), b = paths.indexOf(path);
+    if (a < 0) a = b;
+    const range = paths.slice(Math.min(a, b), Math.max(a, b) + 1);
+    return select(path, { picks: new Set([...(ctrl ? chosen() : []), ...range]), anchor: false });
+  }
+  const set = new Set(chosen());
+  if (set.has(path)) {
+    set.delete(path);
+    const next = [...set].at(-1) ?? null;
+    return select(next, { picks: set });
+  }
+  set.add(path);
+  select(path, { picks: set });
+}
+
 function paintSelection() {
   const v = view(), focus = focusPath(), cur = here();
-  document.querySelectorAll('.ex-items [data-path]').forEach(el => el.classList.toggle('selected', el.dataset.path === v.selected));
+  document.querySelectorAll('.ex-items [data-path]').forEach(el => el.classList.toggle('selected', isChosen(el.dataset.path)));
   document.querySelectorAll('#ex-tree .ex-row[data-path]').forEach(el => {
     el.classList.toggle('selected', el.dataset.path === focus);
     el.classList.toggle('current', v.selected != null && el.dataset.path === cur);
@@ -885,6 +916,7 @@ function itemMenu(x, y, path, dir) {
   const v = view(), full = fullPath(path), plain = host.plain();
   const st = !dir && gitMarks().files.get(path);
   const tracked = !plain && !isIgnored({ path, dir }) && st !== '?';
+  const many = v.picks.size > 1 && v.picks.has(path) ? v.picks.size : 0; // (on one of the selected items)
   host.showMenu(x, y, [
     { label: dir ? 'Open' : 'Open with the default app', disabled: dir && path === here(), run: () => activate(path, dir) },
     ...(v.query && path ? [{ label: dir ? 'Show folder location' : 'Show file location', run: () => navigate(parentOf(path), { select: path }) }] : []),
@@ -899,7 +931,55 @@ function itemMenu(x, y, path, dir) {
       ...(dir ? [] : [{ label: 'Blame', disabled: !tracked, run: () => showTab(path, 'blame') }]),
       { label: 'Show history', disabled: !tracked, run: () => showTab(path, 'history') },
     ]),
+    '-',
+    { label: many ? `Delete ${plural(many, 'item')}…` : 'Delete…', danger: true, disabled: !path, run: () => deleteItems(many ? chosen() : [path]) },
   ]);
+}
+
+// ---------------------------------------------------------------------
+// Deleting (to the Recycle Bin, so it can be undone)
+// ---------------------------------------------------------------------
+
+const deleted = []; // what was deleted, the last at the end: { repo, paths }
+
+async function deleteItems(paths) {
+  paths = paths.filter(Boolean);
+  paths = paths.filter(p => !paths.some(q => p.startsWith(q + '/'))); // (those inside a deleted folder go with it)
+  if (!paths.length) return;
+  const what = paths.length === 1 ? `"${nameOf(paths[0])}"` : plural(paths.length, 'item');
+  if (!(await host.confirmBox('Delete', `Move ${what} to the Recycle Bin?`, 'Delete'))) return;
+  const r = repo, v = view();
+  try {
+    await invoke('trash_paths', { repo: r, paths });
+  } catch (err) {
+    host.toast('Delete failed', 'error', String(err));
+    return host.refresh();
+  }
+  if (chosen().some(p => paths.some(q => p === q || p.startsWith(q + '/')))) select(null);
+  let dir = v.dir;
+  while (paths.some(q => dir === q || dir.startsWith(q + '/'))) dir = parentOf(dir);
+  if (dir !== v.dir) navigate(dir, { push: false });
+  const entry = { repo: r, paths };
+  deleted.push(entry);
+  host.toast(`Moved ${what} to the Recycle Bin`, 'ok', '', { label: 'Undo', run: () => undoDelete(entry) });
+  host.refresh();
+}
+
+// Puts back the last items deleted from this folder (Ctrl+Z), or the given ones (the toast's Undo).
+async function undoDelete(entry = deleted.findLast(d => d.repo === repo)) {
+  if (!entry || !deleted.includes(entry)) return;
+  deleted.splice(deleted.indexOf(entry), 1);
+  const what = entry.paths.length === 1 ? `"${nameOf(entry.paths[0])}"` : plural(entry.paths.length, 'item');
+  try {
+    await invoke('restore_paths', { repo: entry.repo, paths: entry.paths });
+    host.toast(`Restored ${what}`, 'ok');
+  } catch (err) {
+    host.toast(`Could not restore ${what}`, 'error', String(err));
+  }
+  if (entry.repo !== repo) return;
+  host.refresh();
+  const back = entry.paths.filter(p => parentOf(p) === view().dir);
+  if (back.length && active()) select(back[0], { picks: new Set(back), scroll: true });
 }
 
 // =====================================================================
@@ -918,6 +998,7 @@ function setQuery(text) {
   if (!v.query) {
     v.before = v.selected;
     v.selected = null;
+    v.picks.clear();
     v.picked = false;
     v.scope = '';
     $('#ex-tree').scrollTop = 0;
@@ -932,6 +1013,7 @@ function clearSearch() {
   v.query = '';
   v.scope = '';
   v.picked = false;
+  v.picks.clear();
   v.before = null;
   search = null;
   searchToken++;
@@ -1106,13 +1188,19 @@ function bindSidebar() {
       if (dir && path && open && !view().query) toggleOpen(path);
       else if (path) go(rows.find(r => r.dataset.path === parentOf(path)));
     } else if (e.key === 'Enter') activate(path, dir);
+    else if (e.key === 'Delete') deleteItems([path]);
     else return;
     e.preventDefault();
   });
 
   // Back and forward: Alt+arrows and the mouse's side buttons
   window.addEventListener('keydown', e => {
-    if (!active() || !e.altKey || e.ctrlKey || e.target.closest('input, textarea')) return;
+    if (!active() || e.target.closest('input, textarea, [contenteditable]')) return;
+    if (e.ctrlKey && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'z' && deleted.some(d => d.repo === repo)) {
+      e.preventDefault();
+      return undoDelete();
+    }
+    if (!e.altKey || e.ctrlKey) return;
     const fn = { ArrowLeft: goBack, ArrowRight: goForward, ArrowUp: goUp }[e.key];
     if (!fn) return;
     e.preventDefault();
@@ -1147,7 +1235,12 @@ function bindContent(root) {
     if (e.button !== 0) return;
     const it = e.target.closest('[data-path]');
     const path = it ? it.dataset.path : null;
-    if (path !== view().selected) select(path);
+    const ctrl = e.ctrlKey || e.metaKey, shift = e.shiftKey;
+    if (path != null && (ctrl || shift)) {
+      e.preventDefault(); // (no text selected by Shift+click)
+      return pick(path, [...items.querySelectorAll('[data-path]')], { ctrl, shift });
+    }
+    if (path !== view().selected || view().picks.size) select(path);
   });
   items.addEventListener('dblclick', e => {
     const it = e.target.closest('[data-path]');
@@ -1157,7 +1250,7 @@ function bindContent(root) {
     e.preventDefault();
     const it = e.target.closest('[data-path]');
     if (it) {
-      select(it.dataset.path);
+      if (!isChosen(it.dataset.path)) select(it.dataset.path);
       itemMenu(e.clientX, e.clientY, it.dataset.path, 'dir' in it.dataset);
     } else {
       select(null);
@@ -1166,10 +1259,16 @@ function bindContent(root) {
   });
   items.addEventListener('keydown', e => {
     const v = view();
+    if (e.key === 'Escape' && v.picks.size) return select(v.selected);
     if (e.key === 'Escape' && v.query) return endSearch();
     if (e.key === 'Backspace') { e.preventDefault(); return goUp(); }
+    if (e.key === 'Delete') { e.preventDefault(); return deleteItems(chosen()); }
     const els = [...items.querySelectorAll('[data-path]')];
     if (!els.length || e.altKey) return;
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+      e.preventDefault();
+      return select(v.selected ?? els[0].dataset.path, { picks: new Set(els.map(el => el.dataset.path)), anchor: false });
+    }
     const cur = els.findIndex(el => el.dataset.path === v.selected);
     if (e.key === 'Enter') {
       if (cur >= 0) activate(els[cur].dataset.path, 'dir' in els[cur].dataset);
@@ -1187,7 +1286,10 @@ function bindContent(root) {
     if (!(e.key in moves)) return;
     e.preventDefault();
     const n = cur < 0 ? 0 : Math.max(0, Math.min(els.length - 1, cur + moves[e.key]));
-    select(els[n].dataset.path, { scroll: true });
+    if (e.shiftKey) {
+      pick(els[n].dataset.path, els, { shift: true });
+      els[n].scrollIntoView({ block: 'nearest' });
+    } else select(els[n].dataset.path, { scroll: true });
   });
 
   bar.addEventListener('click', e => {

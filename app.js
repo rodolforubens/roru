@@ -1,19 +1,19 @@
-import * as G from './git.js?v=7fcf47a';
-import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=7fcf47a';
-import { renderDiff, renderSubmodule, parseSubmoduleLog } from './diff.js?v=7fcf47a';
-import { partialPatch } from './patch.js?v=7fcf47a';
-import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=7fcf47a';
-import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=7fcf47a';
-import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=7fcf47a';
-import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=7fcf47a';
-import * as P from './projects.js?v=7fcf47a';
-import { syncStatus, onSyncStatus } from './mirror.js?v=7fcf47a';
-import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=7fcf47a';
-import * as S from './notes-store.js?v=7fcf47a';
-import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=7fcf47a';
-import * as M from './mobile.js?v=7fcf47a';
-import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=7fcf47a';
-import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=7fcf47a';
+import * as G from './git.js?v=6db099e';
+import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=6db099e';
+import { renderDiff, renderSubmodule, parseSubmoduleLog } from './diff.js?v=6db099e';
+import { partialPatch } from './patch.js?v=6db099e';
+import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=6db099e';
+import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=6db099e';
+import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=6db099e';
+import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=6db099e';
+import * as P from './projects.js?v=6db099e';
+import { syncStatus, onSyncStatus } from './mirror.js?v=6db099e';
+import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=6db099e';
+import * as S from './notes-store.js?v=6db099e';
+import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=6db099e';
+import * as M from './mobile.js?v=6db099e';
+import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=6db099e';
+import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=6db099e';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -50,13 +50,16 @@ const state = {
 // Basic UI: toasts, context menu, modals
 // =====================================================================
 
-function toast(msg, type = 'info', detail = '') {
+// `action`: { label, run } shows a button (like "Undo"), and keeps the toast longer.
+function toast(msg, type = 'info', detail = '', action = null) {
   const el = document.createElement('div');
   el.className = `toast ${type}`;
-  el.innerHTML = `<div>${esc(msg)}</div>${detail ? `<pre>${esc(detail)}</pre>` : ''}<button class="x">${icon('close')}</button>`;
+  el.innerHTML = `<div>${esc(msg)}</div>${detail ? `<pre>${esc(detail)}</pre>` : ''}`
+    + `${action ? `<button class="btn-sm toast-act">${esc(action.label)}</button>` : ''}<button class="x">${icon('close')}</button>`;
   el.querySelector('.x').onclick = () => el.remove();
+  if (action) el.querySelector('.toast-act').onclick = () => { el.remove(); action.run(); };
   $('#toasts').append(el);
-  setTimeout(() => el.remove(), type === 'error' ? 12000 : type === 'warn' ? 8000 : 3500);
+  setTimeout(() => el.remove(), type === 'error' ? 12000 : type === 'warn' || action ? 8000 : 3500);
 }
 
 // An item's `run` gets where the item was on the screen (to open more choices there).
@@ -3255,8 +3258,9 @@ initExplorer({
   status: () => state.status,
   submodules: () => state.submodules,
   head: headSha,
-  toast, showMenu, copy, bindSplitters, saveSoon, revealCommit, revealChange,
+  toast, showMenu, copy, bindSplitters, saveSoon, revealCommit, revealChange, confirmBox,
   terminal: openTerminal,
+  refresh: () => refresh(),
 });
 initDashboard({
   open: path => openRepo(path),

@@ -837,6 +837,7 @@ table.rs-table .code { padding-left: 12px; }
 .toast.error { border-left-color: var(--red); }
 .toast.ok { border-left-color: var(--green); }
 .toast.warn { border-left-color: var(--yellow); }
+.toast .toast-act { margin-top: 8px; }
 .toast pre { margin: 4px 0 0; font-family: var(--mono); font-size: 11.5px; white-space: pre-wrap; max-height: 200px; overflow: auto; color: var(--text-2); }
 .toast .x { position: absolute; top: 6px; right: 6px; background: none; border: none; cursor: pointer; color: var(--text-3); padding: 2px; display: flex; }
 .toast .x:hover { color: var(--text); }
