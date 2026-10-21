@@ -1,19 +1,19 @@
-import * as G from './git.js?v=829cef0';
-import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=829cef0';
-import { renderDiff, renderSubmodule, parseSubmoduleLog } from './diff.js?v=829cef0';
-import { partialPatch } from './patch.js?v=829cef0';
-import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=829cef0';
-import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=829cef0';
-import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=829cef0';
-import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=829cef0';
-import * as P from './projects.js?v=829cef0';
-import { syncStatus, onSyncStatus } from './mirror.js?v=829cef0';
-import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=829cef0';
-import * as S from './notes-store.js?v=829cef0';
-import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=829cef0';
-import * as M from './mobile.js?v=829cef0';
-import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=829cef0';
-import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=829cef0';
+import * as G from './git.js?v=e6ba73e';
+import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=e6ba73e';
+import { renderDiff, renderSubmodule, parseSubmoduleLog } from './diff.js?v=e6ba73e';
+import { partialPatch } from './patch.js?v=e6ba73e';
+import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=e6ba73e';
+import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=e6ba73e';
+import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=e6ba73e';
+import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=e6ba73e';
+import * as P from './projects.js?v=e6ba73e';
+import { syncStatus, onSyncStatus } from './mirror.js?v=e6ba73e';
+import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=e6ba73e';
+import * as S from './notes-store.js?v=e6ba73e';
+import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=e6ba73e';
+import * as M from './mobile.js?v=e6ba73e';
+import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=e6ba73e';
+import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=e6ba73e';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -68,6 +68,12 @@ let pressed = null, pressedAt = 0, menuFrom = null, closing = null;
 function showMenu(x, y, items) {
   const from = pressed?.isConnected && Date.now() - pressedAt < 2000 ? pressed : null;
   if (from && from === closing) { closing = null; return; }
+  // (separators only between items: none at the ends, or two in a row when a part was left out)
+  items = items.reduce((out, it) => {
+    if (it !== '-' ? it.label : out.length && out.at(-1) !== '-') out.push(it);
+    return out;
+  }, []);
+  if (items.at(-1) === '-') items.pop();
   const m = $('#menu');
   m.innerHTML = items.map((it, i) => it === '-' ? '<div class="mi-sep"></div>'
     : `<div class="mi ${it.danger ? 'danger' : ''} ${it.disabled ? 'disabled' : ''}" data-i="${i}">${esc(it.label)}</div>`).join('');
@@ -670,6 +676,9 @@ function showPage(note) {
 // Opens a note in a tab; with `replace`, the note tab being shown goes there instead.
 // A note that already has a tab is shown there.
 function openNoteTab(id, { replace = false } = {}) {
+  // a note of another space (a mention of it) opens among that space's tabs
+  const space = S.getNote(id)?.space;
+  if (space && space !== tabs.space && (space === 'home' || P.getProject(space))) return switchSpace(space).then(() => openNoteTab(id));
   const key = noteKey(id);
   if (!tabs.list.includes(key)) {
     const at = tabs.list.indexOf(activeKey());

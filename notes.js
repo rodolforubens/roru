@@ -5,15 +5,15 @@
 // below as it was. Pages nest in other pages through their text (a link to the nested page, or a
 // database block); databases show in the tree as one item. Tabs and spaces belong to app.js (see
 // initNotesUi); the table and board views and the properties are in views.js.
-import * as S from './notes-store.js?v=829cef0';
-import * as G from './git.js?v=829cef0';
-import { createEditor, pickImages, addImages } from './editor.js?v=829cef0';
-import { pickEmoji } from './emoji.js?v=829cef0';
-import { toMarkdown } from './markdown.js?v=829cef0';
-import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView } from './views.js?v=829cef0';
-import { importNotion } from './notion-import.js?v=829cef0';
-import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative } from './util.js?v=829cef0';
-import { desktop, invoke, isMobile } from './platform.js?v=829cef0';
+import * as S from './notes-store.js?v=e6ba73e';
+import * as G from './git.js?v=e6ba73e';
+import { createEditor, pickImages, addImages } from './editor.js?v=e6ba73e';
+import { pickEmoji } from './emoji.js?v=e6ba73e';
+import { toMarkdown } from './markdown.js?v=e6ba73e';
+import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView } from './views.js?v=e6ba73e';
+import { importNotion } from './notion-import.js?v=e6ba73e';
+import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative } from './util.js?v=e6ba73e';
+import { desktop, invoke, isMobile } from './platform.js?v=e6ba73e';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -1037,8 +1037,15 @@ function best(list, score, limit) {
 async function mentionItems(query, self) {
   const q = query.toLowerCase().trim();
   const space = S.getNote(self)?.space ?? host.space();
-  const notes = best(S.notesOf(space).filter(n => n.id !== self), n => (rank(n.title || 'untitled', q) && rank(n.title || 'untitled', q) * 1e13 + n.updated), 5)
-    .map(n => ({ kind: 'note', id: n.id, label: n.title || 'Untitled', detail: S.pathOf(n.id).map(a => a.title || 'Untitled').join(' / '), icon: noteIcon(n.id), group: 'Pages and databases' }));
+  // (the notes of every space, those of this one first, then the ones changed last)
+  const notes = best(host.spaces().flatMap(S.notesOf).filter(n => n.id !== self), n => {
+    const r = rank(n.title || 'untitled', q);
+    return r && r * 2e13 + (n.space === space ? 1e13 : 0) + n.updated;
+  }, q ? 8 : 5).map(n => {
+    const path = S.pathOf(n.id).map(a => a.title || 'Untitled');
+    if (n.space !== space) path.unshift(host.spaceName(n.space));
+    return { kind: 'note', id: n.id, label: n.title || 'Untitled', detail: path.join(' / '), icon: noteIcon(n.id), group: 'Pages and databases' };
+  });
   const folders = space === host.space() ? host.folders() : [];
   const multi = folders.length > 1;
   const srcs = (await Promise.all(folders.map(f => folderSource(f).then(s => ({ repo: f, ...s }), () => null)))).filter(Boolean);
