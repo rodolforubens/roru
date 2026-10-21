@@ -3,17 +3,13 @@
 // Typing in the search box enters a transient search mode: the tree and the contents only show the
 // matching files and folders, until the search is cleared.
 // Also used for folders that are not Git repositories ("plain" folders), without the Git parts.
-import * as G from './git.js?v=0766cdf';
-import { esc, fmtDate, fmtRelative, fmtSize, debounce, store, icon, fileIcon } from './util.js?v=0766cdf';
-import { highlighterFor } from './highlight.js?v=0766cdf';
-import { invoke, convertFileSrc } from './platform.js?v=0766cdf';
+import * as G from './git.js?v=870b4f7';
+import { esc, fmtDate, fmtRelative, fmtSize, fmtDuration, debounce, store, icon, fileIcon, IMAGE, VIDEO, AUDIO, FONT, extOf } from './util.js?v=870b4f7';
+import { highlighterFor } from './highlight.js?v=870b4f7';
+import { invoke, convertFileSrc } from './platform.js?v=870b4f7';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
-const IMAGE = new Set(['png', 'jpg', 'jpeg', 'jfif', 'gif', 'webp', 'bmp', 'ico', 'svg', 'avif', 'apng']);
-const VIDEO = new Set(['mp4', 'm4v', 'webm', 'mov', 'ogv']);
-const AUDIO = new Set(['mp3', 'wav', 'ogg', 'oga', 'm4a', 'aac', 'flac', 'opus', 'weba']);
-const FONT = new Set(['ttf', 'otf', 'woff', 'woff2']);
 // Files Windows can make a picture of; the others share the icon of their extension.
 // SVG has no Windows thumbnail: the webview shows the file itself.
 const THUMB = new Set([...IMAGE, ...VIDEO, 'tif', 'tiff', 'heic', 'heif', 'tga', 'dds', 'psd', 'exr', 'hdr', 'dng', 'cr2', 'nef', 'arw',
@@ -29,7 +25,6 @@ const BLAME_LINES = 20000;
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 const byName = (a, b) => (b.dir - a.dir) || collator.compare(a.name, b.name);
-const extOf = name => { const i = name.lastIndexOf('.'); return i > 0 ? name.slice(i + 1).toLowerCase() : ''; };
 const parentOf = path => path.slice(0, Math.max(0, path.lastIndexOf('/')));
 const nameOf = path => path.slice(path.lastIndexOf('/') + 1);
 const plural = (n, word) => `${n.toLocaleString('en-US')} ${word}${n === 1 ? '' : 's'}`;
@@ -652,12 +647,6 @@ function setKv(token, key, value) {
 const commitHtml = (c, cls) => `<div class="${cls}" data-sha="${c.sha}" title="Show this commit in the history">
   <div class="exd-csub">${esc(c.subject)}</div>
   <div class="exd-cmeta">${esc(c.author)} · <span title="${esc(fmtDate(c.time))}">${esc(fmtRelative(c.time))}</span> · <span class="mono">${c.sha.slice(0, 7)}</span></div></div>`;
-
-function fmtDuration(s) {
-  s = Math.round(s);
-  const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, sec = String(s % 60).padStart(2, '0');
-  return h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
-}
 
 // ---------------------------------------------------------------------
 // Preview

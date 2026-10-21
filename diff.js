@@ -1,9 +1,10 @@
 // Diff rendering (unified or side-by-side split view), with buttons to stage or unstage each
 // hunk and selectable lines when asked. Submodule changes and Git LFS pointer files are shown
-// as summaries instead.
-import { esc, fmtSize } from './util.js?v=0766cdf';
-import { highlighterFor } from './highlight.js?v=0766cdf';
-import { parseDiff, canStageParts, MAX_LINES } from './patch.js?v=0766cdf';
+// as summaries instead, and images, videos... as their versions before and after.
+import { esc, fmtSize } from './util.js?v=870b4f7';
+import { highlighterFor } from './highlight.js?v=870b4f7';
+import { parseDiff, canStageParts, MAX_LINES } from './patch.js?v=870b4f7';
+import { mediaChange, mediaBody, mediaLabel } from './media-diff.js?v=870b4f7';
 
 // Adds syntax-highlighted html to each line. The old side (context + removed lines) and
 // the new side (context + added lines) are tokenized separately so that a comment or
@@ -179,9 +180,18 @@ function renderLfs(change, titleHtml) {
     </div></div>`;
 }
 
+// `preview` is null when the file has no other view than its text, else whether it is shown.
+function layoutToggle(split, preview = null) {
+  const b = (mode, label, on) => `<button data-diff-mode="${mode}" class="${on ? 'on' : ''}">${label}</button>`;
+  return `<div class="diff-mode" title="Diff layout">${b('unified', 'Unified', !preview && !split)}${b('split', 'Split', !preview && split)}${
+    preview != null ? b('preview', 'Preview', preview) : ''}</div>`;
+}
+
 // `stage` ('stage' or 'unstage') adds the controls to stage or unstage hunks and lines (see
-// unifiedRows), and a bar in the head for the selected lines.
-export function renderDiff(text, { title, split = false, path, actions = '', stage = null } = {}) {
+// unifiedRows), and a bar in the head for the selected lines. Images, videos, audio, PDFs and
+// fonts show their versions (filled in by loadMedia); `preview` false shows the text of those
+// that have one (SVG) instead.
+export function renderDiff(text, { title, split = false, preview = true, path, actions = '', stage = null } = {}) {
   const titleHtml = title ? `<span class="diff-title">${esc(title)}</span>` : '';
   if (!text || !text.trim()) {
     return `<div class="diff-empty">${title ? `<div class="diff-title">${esc(title)}</div>` : ''}<p>No differences to show.</p></div>`;
@@ -192,18 +202,23 @@ export function renderDiff(text, { title, split = false, path, actions = '', sta
   }
   const d = parseDiff(text);
   const lfs = lfsChange(d);
+  const metaHtml = d.meta.length ? `<div class="diff-meta">${d.meta.map(esc).join('<br>')}</div>` : '';
+  const counts = `<span class="stat-add">+${d.added}</span> <span class="stat-del">−${d.removed}</span>`;
+  const media = path && d.files <= 1 ? mediaChange(text, path, lfs) : null;
+  const textual = !!media && !lfs && d.hunks.length > 0;
+  if (media && (preview || !textual)) {
+    const stats = textual ? counts : `<span class="muted">${lfs ? 'Git LFS · ' : ''}${esc(mediaLabel(media))}</span>`;
+    return `<div class="diff-head">${titleHtml}<span class="diff-stats">${stats}</span>${textual ? layoutToggle(split, true) : ''}</div>`
+      + metaHtml + mediaBody(media);
+  }
   if (lfs) return renderLfs(lfs, titleHtml);
   highlight(d.hunks, path);
-  const stats = d.binary ? '<span class="muted">binary file</span>'
-    : `<span class="stat-add">+${d.added}</span> <span class="stat-del">−${d.removed}</span>`;
-  const toggle = `<div class="diff-mode" title="Diff layout">
-    <button data-diff-mode="unified" class="${split ? '' : 'on'}">Unified</button><button data-diff-mode="split" class="${split ? 'on' : ''}">Split</button></div>`;
+  const stats = d.binary ? '<span class="muted">binary file</span>' : counts;
   if (!canStageParts(d)) stage = null;
   const verb = stage === 'stage' ? 'Stage' : 'Unstage';
   const lineSel = stage && d.hunks.length ? `<span class="line-sel" hidden><span class="line-sel-n"></span>
     <button class="btn-sm primary" data-part="lines">${verb} lines</button><button class="btn-sm" data-part="clear" title="Clear the selection (Esc)">Clear</button></span>` : '';
-  const head = `<div class="diff-head">${titleHtml}${lineSel}<span class="diff-stats">${stats}</span>${d.hunks.length ? toggle : ''}</div>`;
-  const metaHtml = d.meta.length ? `<div class="diff-meta">${d.meta.map(esc).join('<br>')}</div>` : '';
+  const head = `<div class="diff-head">${titleHtml}${lineSel}<span class="diff-stats">${stats}</span>${d.hunks.length ? layoutToggle(split, textual ? false : null) : ''}</div>`;
   if (!d.hunks.length) {
     return head + metaHtml + `<div class="diff-empty"><p>${d.binary ? 'Binary file — no text preview.' : 'No text changes to show.'}</p></div>`;
   }

@@ -1,4 +1,4 @@
-import { invoke } from './platform.js?v=0766cdf';
+import { invoke } from './platform.js?v=870b4f7';
 
 export function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -32,6 +32,19 @@ export function fmtSize(bytes) {
   while (n >= 1024 && u < units.length - 1) { n /= 1024; u++; }
   return u ? `${n.toFixed(n < 10 ? 1 : 0)} ${units[u]}` : `${n} bytes`;
 }
+
+export function fmtDuration(s) {
+  s = Math.round(s);
+  const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, sec = String(s % 60).padStart(2, '0');
+  return h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
+}
+
+// Files the webview can show (previews in the explorer and in diffs), by extension.
+export const IMAGE = new Set(['png', 'jpg', 'jpeg', 'jfif', 'gif', 'webp', 'bmp', 'ico', 'svg', 'avif', 'apng']);
+export const VIDEO = new Set(['mp4', 'm4v', 'webm', 'mov', 'ogv']);
+export const AUDIO = new Set(['mp3', 'wav', 'ogg', 'oga', 'm4a', 'aac', 'flac', 'opus', 'weba']);
+export const FONT = new Set(['ttf', 'otf', 'woff', 'woff2']);
+export const extOf = name => { const i = name.lastIndexOf('.'); return i > 0 ? name.slice(i + 1).toLowerCase() : ''; };
 
 // "C:\a\b\" -> "C:/a/b", like the paths git gives (a drive root keeps its slash).
 export function normPath(p) {

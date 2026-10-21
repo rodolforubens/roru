@@ -1,19 +1,20 @@
-import * as G from './git.js?v=0766cdf';
-import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=0766cdf';
-import { renderDiff, renderSubmodule, parseSubmoduleLog } from './diff.js?v=0766cdf';
-import { partialPatch } from './patch.js?v=0766cdf';
-import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=0766cdf';
-import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=0766cdf';
-import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=0766cdf';
-import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=0766cdf';
-import * as P from './projects.js?v=0766cdf';
-import { syncStatus, onSyncStatus } from './mirror.js?v=0766cdf';
-import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=0766cdf';
-import * as S from './notes-store.js?v=0766cdf';
-import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=0766cdf';
-import * as M from './mobile.js?v=0766cdf';
-import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=0766cdf';
-import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=0766cdf';
+import * as G from './git.js?v=870b4f7';
+import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=870b4f7';
+import { renderDiff, renderSubmodule, parseSubmoduleLog } from './diff.js?v=870b4f7';
+import { loadMedia } from './media-diff.js?v=870b4f7';
+import { partialPatch } from './patch.js?v=870b4f7';
+import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=870b4f7';
+import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=870b4f7';
+import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=870b4f7';
+import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=870b4f7';
+import * as P from './projects.js?v=870b4f7';
+import { syncStatus, onSyncStatus } from './mirror.js?v=870b4f7';
+import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=870b4f7';
+import * as S from './notes-store.js?v=870b4f7';
+import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=870b4f7';
+import * as M from './mobile.js?v=870b4f7';
+import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=870b4f7';
+import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=870b4f7';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -159,25 +160,33 @@ const matches = (text, filter) => !filter || text.toLowerCase().includes(filter.
 
 // Diff panes remember their last diff so the Unified/Split toggle can re-render it.
 let diffSplit = !!store('diffSplit');
+// Images with a text diff too (SVG) show their versions, unless the toggle says otherwise.
+let diffPreview = store('diffPreview') ?? true;
 
 // `path` picks the syntax highlighting language. `part` ({ kind, path }: a file of the Changes
 // view) adds the controls to stage or unstage its hunks and selected lines. The selected lines
-// (`lines`, ids from parseDiff) stay while the diff shown is the same.
-function showDiff(pane, text, title, path = title, part = null) {
+// (`lines`, ids from parseDiff) stay while the diff shown is the same. `work`: the new side is
+// the working copy (for the previews of images, videos...).
+function showDiff(pane, text, title, path = title, part = null, work = part?.kind === 'unstaged') {
   const prev = pane._diff;
   const same = prev && prev.text === text && prev.path === path && prev.part?.kind === part?.kind;
-  pane._diff = { text, title, path, part, lines: same ? prev.lines : new Set(), anchor: same ? prev.anchor : null };
-  pane.innerHTML = renderDiff(text, { title, path, split: diffSplit, stage: part && (part.kind === 'staged' ? 'unstage' : 'stage') });
+  const layout = `${diffSplit} ${diffPreview}`;
+  // A refresh that changes nothing keeps the previews as they are (a video keeps playing)
+  if (same && prev.title === title && prev.layout === layout && pane.querySelector(':scope > .media-diff')) return;
+  pane._diff = { text, title, path, part, work, layout, lines: same ? prev.lines : new Set(), anchor: same ? prev.anchor : null };
+  pane.innerHTML = renderDiff(text, { title, path, split: diffSplit, preview: diffPreview, stage: part && (part.kind === 'staged' ? 'unstage' : 'stage') });
   if (part) paintLines(pane);
+  loadMedia(pane, state.repo, work);
 }
 
 document.addEventListener('click', e => {
   const btn = e.target.closest('[data-diff-mode]');
   if (!btn) return;
-  diffSplit = btn.dataset.diffMode === 'split';
-  store('diffSplit', diffSplit);
+  const mode = btn.dataset.diffMode;
+  if (btn.parentElement.querySelector('[data-diff-mode="preview"]')) store('diffPreview', diffPreview = mode === 'preview');
+  if (mode !== 'preview') store('diffSplit', diffSplit = mode === 'split');
   const pane = btn.closest('.diff-pane'), d = pane?._diff;
-  if (d) showDiff(pane, d.text, d.title, d.path, d.part);
+  if (d) showDiff(pane, d.text, d.title, d.path, d.part, d.work);
 });
 
 // ---------- staging hunks and lines ----------
@@ -2717,7 +2726,7 @@ async function showConflict(f, { token, quiet }) {
       [{ ...resolved, primary: true }, ...versions], { diff: true, shown: key + ':clean' });
     const text = await g(['diff', '--ours', '--', f.path]).catch(e => e.message);
     const dp = pane.querySelector('.rs-diff');
-    if (token === selectToken && dp) showDiff(dp, text, 'Compared with the current version', f.path);
+    if (token === selectToken && dp) showDiff(dp, text, 'Compared with the current version', f.path, null, true);
     return;
   }
   if (quiet && same && pane.dataset.shown === key) return;
