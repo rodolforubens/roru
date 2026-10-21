@@ -1,19 +1,19 @@
-import * as G from './git.js?v=ca59234';
-import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=ca59234';
-import { renderDiff, renderSubmodule, parseSubmoduleLog } from './diff.js?v=ca59234';
-import { partialPatch } from './patch.js?v=ca59234';
-import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=ca59234';
-import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=ca59234';
-import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=ca59234';
-import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=ca59234';
-import * as P from './projects.js?v=ca59234';
-import { syncStatus, onSyncStatus } from './mirror.js?v=ca59234';
-import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=ca59234';
-import * as S from './notes-store.js?v=ca59234';
-import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=ca59234';
-import * as M from './mobile.js?v=ca59234';
-import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=ca59234';
-import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=ca59234';
+import * as G from './git.js?v=4a0b90d';
+import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=4a0b90d';
+import { renderDiff, renderSubmodule, parseSubmoduleLog } from './diff.js?v=4a0b90d';
+import { partialPatch } from './patch.js?v=4a0b90d';
+import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=4a0b90d';
+import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=4a0b90d';
+import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=4a0b90d';
+import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=4a0b90d';
+import * as P from './projects.js?v=4a0b90d';
+import { syncStatus, onSyncStatus } from './mirror.js?v=4a0b90d';
+import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=4a0b90d';
+import * as S from './notes-store.js?v=4a0b90d';
+import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=4a0b90d';
+import * as M from './mobile.js?v=4a0b90d';
+import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=4a0b90d';
+import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=4a0b90d';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -939,10 +939,10 @@ const currentProject = () => P.getProject(tabs.space);
 function renderRail() {
   const projects = P.listProjects();
   const canCreate = desktop || currentUser();
-  $('#rail').innerHTML = `<button class="rail-item home ${tabs.space === 'home' ? 'active' : ''}" data-space="home" title="Home  (Alt+1)">${icon('home')}</button>
+  $('#rail').innerHTML = `<button class="rail-item home ${tabs.space === 'home' ? 'active' : ''}" data-space="home" title="Home  (Ctrl+1)">${icon('home')}</button>
     ${projects.length ? '<div class="rail-sep"></div>' : ''}
     ${projects.map((p, i) => `<button class="rail-item proj ${p.id === tabs.space ? 'active' : ''}" data-space="${esc(p.id)}" style="--pc: ${p.color}"
-      title="${esc(p.name)}${i < 8 ? `  (Alt+${i + 2})` : ''}" draggable="true">${esc(P.initials(p.name))}</button>`).join('')}
+      title="${esc(p.name)}${i < 8 ? `  (Ctrl+${i + 2})` : ''}" draggable="true">${esc(P.initials(p.name))}</button>`).join('')}
     ${canCreate ? `<button class="rail-add" title="New project">${icon('plus')}</button>` : ''}
     ${configured ? accountButton() : ''}`;
 }
@@ -1283,7 +1283,7 @@ function addToProjectItems(path) {
     }));
 }
 
-// Alt+1 is home, Alt+2… the projects in the order of the rail.
+// Ctrl+1 is home, Ctrl+2… the projects in the order of the rail.
 function switchToNth(n) {
   const id = n === 0 ? 'home' : P.listProjects()[n - 1]?.id;
   if (id) switchSpace(id);
@@ -3277,8 +3277,9 @@ function initToolbar() {
 function initKeys() {
   window.addEventListener('keydown', e => {
     const ctrl = e.ctrlKey || e.metaKey;
-    // on the web, only Alt+1… (the spaces) and Escape: there are no folders or notes, and F5 reloads the page
-    if (!desktop && !(e.altKey && !ctrl) && e.key !== 'Escape') return;
+    const digit = /^Digit[1-9]$/.test(e.code) ? +e.code.slice(5) : 0;
+    // on the web, only Ctrl+1… (the spaces) and Escape: there are no folders or notes, and F5 reloads the page
+    if (!desktop && !(ctrl && digit) && e.key !== 'Escape') return;
     if (e.key === 'F5' || (ctrl && e.key.toLowerCase() === 'r')) { e.preventDefault(); refresh(); }
     else if (ctrl && e.key.toLowerCase() === 'o') { e.preventDefault(); openRepoDialog(); }
     else if (ctrl && e.key.toLowerCase() === 't') { e.preventDefault(); showNewTabMenu(); }
@@ -3297,9 +3298,9 @@ function initKeys() {
       input.select();
     }
     else if (ctrl && e.key.toLowerCase() === 'e' && state.repo) { e.preventDefault(); setMode(state.mode === 'git' ? 'explorer' : 'git'); }
-    else if (ctrl && e.key === '1' && state.repo) { e.preventDefault(); setView('changes'); }
-    else if (ctrl && e.key === '2' && state.repo) { e.preventDefault(); setView('history'); }
-    else if (e.altKey && !ctrl && /^Digit[1-9]$/.test(e.code)) { e.preventDefault(); switchToNth(+e.code.slice(5) - 1); }
+    else if (ctrl && !e.altKey && !e.shiftKey && digit) { e.preventDefault(); switchToNth(digit - 1); }
+    else if (e.altKey && !ctrl && digit === 1 && state.repo) { e.preventDefault(); setView('changes'); }
+    else if (e.altKey && !ctrl && digit === 2 && state.repo) { e.preventDefault(); setView('history'); }
     else if (e.key === 'Escape') {
       if (!$('#menu').hidden) hideMenu();
       else if (!e.target.closest?.('input, textarea, .modal')) clearLines();
