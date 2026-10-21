@@ -1,19 +1,19 @@
-import * as G from './git.js?v=db25cd6';
-import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=db25cd6';
-import { renderDiff, renderSubmodule, parseSubmoduleLog } from './diff.js?v=db25cd6';
-import { partialPatch } from './patch.js?v=db25cd6';
-import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=db25cd6';
-import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=db25cd6';
-import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=db25cd6';
-import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=db25cd6';
-import * as P from './projects.js?v=db25cd6';
-import { syncStatus, onSyncStatus } from './mirror.js?v=db25cd6';
-import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=db25cd6';
-import * as S from './notes-store.js?v=db25cd6';
-import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=db25cd6';
-import * as M from './mobile.js?v=db25cd6';
-import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=db25cd6';
-import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=db25cd6';
+import * as G from './git.js?v=589d7e5';
+import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=589d7e5';
+import { renderDiff, renderSubmodule, parseSubmoduleLog } from './diff.js?v=589d7e5';
+import { partialPatch } from './patch.js?v=589d7e5';
+import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=589d7e5';
+import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=589d7e5';
+import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=589d7e5';
+import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=589d7e5';
+import * as P from './projects.js?v=589d7e5';
+import { syncStatus, onSyncStatus } from './mirror.js?v=589d7e5';
+import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=589d7e5';
+import * as S from './notes-store.js?v=589d7e5';
+import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=589d7e5';
+import * as M from './mobile.js?v=589d7e5';
+import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=589d7e5';
+import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=589d7e5';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -2155,7 +2155,7 @@ function fileListHtml(kind, files, indexOf, action) {
     item: (f, depth) => fileRow(f, indexOf(f), action(f), depth),
     dir: (name, path, depth, children) => {
       const key = dirKey(kind, path), collapsed = !state.fileFilter && state.collapsed[key];
-      return `<div class="dir-row ${collapsed ? 'collapsed' : ''}" data-dir="${esc(key)}" style="${indent(10, depth)}" title="${esc(path)}">
+      return `<div class="dir-row ${collapsed ? 'collapsed' : ''}" data-dir="${esc(key)}" data-path="${esc(path)}" style="${indent(10, depth)}" title="${esc(path)}">
         ${icon('chevron')}${fileIcon(path, true)}<span>${esc(name)}</span></div>${collapsed ? '' : children()}`;
     },
   });
@@ -2414,26 +2414,22 @@ function bindChangesEvents(root) {
   root.addEventListener('contextmenu', e => {
     const line = e.target.closest('table.diff.stageable tr[data-h]');
     if (line) { e.preventDefault(); return lineMenu(e, line); }
+    // A folder (in folder mode) selects its files and acts on all of them.
+    const dirRow = e.target.closest('.dir-row');
+    if (dirRow) {
+      e.preventDefault();
+      const kind = dirRow.closest('[data-kind]').dataset.kind, dir = dirRow.dataset.path;
+      const files = visibleFiles(kind).filter(f => f.path.startsWith(dir + '/'));
+      if (!files.length) return;
+      setSelection(kind, files.map(f => f.path));
+      return changesMenu(e.clientX, e.clientY, kind, files, dir);
+    }
     const row = e.target.closest('.file-row');
     if (!row) return;
     e.preventDefault();
     const { kind, f } = rowFile(row);
     if (!(state.sel.kind === kind && state.sel.paths.has(f.path))) setSelection(kind, [f.path]);
-    const files = targetFiles(kind, f), n = files.length, many = n > 1;
-    if (kind === 'conflicts') return conflictMenu(e.clientX, e.clientY, files);
-    const staged = kind === 'staged';
-    const untracked = files.filter(x => x.untracked);
-    showMenu(e.clientX, e.clientY, [
-      staged ? { label: many ? `Unstage ${n} files` : 'Unstage', run: () => unstage(files) }
-        : { label: many ? `Stage ${n} files` : 'Stage', run: () => stage(files) },
-      { label: many ? `Discard changes in ${n} files…` : 'Discard changes…', danger: true, disabled: staged, run: () => discard(files) },
-      '-',
-      { label: many ? `Copy ${n} paths` : 'Copy path', run: () => copy(files.map(x => x.path).join('\n')) },
-      { label: 'Show in Explorer', disabled: many, run: () => invoke('show_in_explorer', { repo: state.repo, path: f.path }).catch(err => toast('Show in Explorer failed', 'error', String(err))) },
-      { label: 'Add to .gitignore', disabled: untracked.length !== n, run: () => ignoreFiles(files) },
-      ...(!many && f.submodule ? [{ label: 'Open submodule', disabled: !cloned(state.submodules.find(s => s.path === f.path)), run: () => openSubmodule(f.path) }] : []),
-      ...lfsFileItems(files, staged),
-    ]);
+    changesMenu(e.clientX, e.clientY, kind, targetFiles(kind, f));
   });
 
   root.addEventListener('click', e => {
@@ -2518,6 +2514,27 @@ async function showSelection({ quiet = false } = {}) {
   }
 }
 
+// The menu of changed files, or of a folder's files when `dir` is the folder it was opened on.
+function changesMenu(x, y, kind, files, dir = null) {
+  if (kind === 'conflicts') return conflictMenu(x, y, files);
+  const n = files.length, many = n > 1, f = files[0];
+  const staged = kind === 'staged';
+  const untracked = files.filter(x => x.untracked);
+  const inDir = dir && ` (${plural(n, 'file')})`;
+  showMenu(x, y, [
+    staged ? { label: dir ? `Unstage folder${inDir}` : many ? `Unstage ${n} files` : 'Unstage', run: () => unstage(files) }
+      : { label: dir ? `Stage folder${inDir}` : many ? `Stage ${n} files` : 'Stage', run: () => stage(files) },
+    { label: dir ? `Discard changes in folder${inDir}…` : many ? `Discard changes in ${n} files…` : 'Discard changes…', danger: true, disabled: staged, run: () => discard(files) },
+    '-',
+    dir ? { label: 'Copy folder path', run: () => copy(dir) }
+      : { label: many ? `Copy ${n} paths` : 'Copy path', run: () => copy(files.map(x => x.path).join('\n')) },
+    { label: 'Show in Explorer', disabled: many && !dir, run: () => invoke('show_in_explorer', { repo: state.repo, path: dir ?? f.path }).catch(err => toast('Show in Explorer failed', 'error', String(err))) },
+    { label: dir ? 'Add folder to .gitignore' : 'Add to .gitignore', disabled: untracked.length !== n, run: () => ignoreFiles(files, dir) },
+    ...(!many && !dir && f.submodule ? [{ label: 'Open submodule', disabled: !cloned(state.submodules.find(s => s.path === f.path)), run: () => openSubmodule(f.path) }] : []),
+    ...lfsFileItems(files, staged),
+  ]);
+}
+
 // "Track with Git LFS" entries of the file menu: by extension or by path.
 function lfsFileItems(files, staged) {
   const plain = files.filter(f => !f.submodule && f.status !== 'D');
@@ -2600,13 +2617,14 @@ async function discard(files) {
   }, { busy: 'Discarding', on: files.map(f => at.file('unstaged', f.path)) });
 }
 
-function ignoreFiles(files) {
-  const paths = files.map(f => f.path);
+// Ignores the files, or the whole folder `dir` they are in.
+function ignoreFiles(files, dir = null) {
+  const paths = dir ? [dir + '/'] : files.map(f => f.path);
   run('Update .gitignore', async () => {
     for (const p of paths) await invoke('append_gitignore', { repo: state.repo, pattern: '/' + p });
   }, {
     success: paths.length === 1 ? `"${paths[0]}" added to .gitignore` : `${paths.length} paths added to .gitignore`,
-    busy: 'Updating .gitignore', on: paths.map(p => at.file('unstaged', p)),
+    busy: 'Updating .gitignore', on: files.map(f => at.file('unstaged', f.path)),
   });
 }
 
