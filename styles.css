@@ -1696,7 +1696,9 @@ html.signed-out #mbar, html.signed-out #mnav { display: none !important; }
 html.mobile .np-doc { padding: 14px 16px 40vh; }
 html.mobile .np-title { font-size: 28px; }
 html.mobile .dash-head { padding: 16px 16px 12px; }
-html.mobile .dash-links { margin: 0 16px 24px; grid-template-columns: 1fr; }
+/* (links in the same two columns as the notes' cards) */
+html.mobile .dash-links { margin: 0 16px 24px; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+html.mobile .lk-card .lk-body { padding: 8px 10px 9px; }
 html.mobile .dash-notes { margin: 0 16px 24px; }
 html.mobile .bd { scroll-snap-type: x mandatory; }
 html.mobile .bd-col { width: calc(100vw - 72px); scroll-snap-align: start; }
