@@ -8,9 +8,9 @@
 // computer (and in the mentions and Branch values of the notes); each computer can point it to a
 // folder of its own (see "Where the folders are on this computer" below), and the rest of the UI
 // (tabs, the dashboard, Git) only sees those local paths.
-import { store } from './util.js?v=0b7d26a';
-import { db } from './account.js?v=0b7d26a';
-import { createMirror, clone } from './mirror.js?v=0b7d26a';
+import { store } from './util.js?v=7fcf47a';
+import { db } from './account.js?v=7fcf47a';
+import { createMirror, clone } from './mirror.js?v=7fcf47a';
 
 export const COLORS = ['#7aa2f7', '#9ece6a', '#f7768e', '#e0af68', '#bb9af7', '#2ac3de', '#ff9e64', '#73daca'];
 
@@ -147,6 +147,17 @@ export function replaceFolder(id, path, next) {
     p.folders = p.folders.filter(x => x !== f);
     save();
   } else setLocalPath(shared, next);
+}
+
+// Moves a folder (a path of this computer) before (or after) another one, as dragged in the list.
+export function moveFolder(id, path, target, after = false) {
+  const p = getProject(id), shared = sharedPath(path), to = sharedPath(target);
+  const f = p?.folders.find(x => x.path === shared);
+  if (!f || shared === to) return;
+  p.folders = p.folders.filter(x => x !== f);
+  const i = p.folders.findIndex(x => x.path === to);
+  p.folders.splice(i < 0 ? p.folders.length : i + (after ? 1 : 0), 0, f);
+  save();
 }
 
 export const hasFolder = (p, path) => p.folders.some(f => f.path === sharedPath(path));

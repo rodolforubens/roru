@@ -752,6 +752,13 @@ table.rs-table .code { padding-left: 12px; }
 .dash-row { min-height: 52px; padding-top: 7px; padding-bottom: 7px; border-top: 1px solid var(--border); cursor: pointer; }
 .dash-row:hover { background: var(--hover); }
 .dash-row > * { min-width: 0; }
+.dash-row { position: relative; }
+.dash-row.dragging { opacity: .4; }
+.dash-row.drop-before::before, .dash-row.drop-after::after {
+  content: ""; position: absolute; left: 0; right: 0; height: 2px; background: var(--accent); pointer-events: none;
+}
+.dash-row.drop-before::before { top: -1px; }
+.dash-row.drop-after::after { bottom: -1px; }
 .dash-name { display: flex; align-items: center; gap: 10px; }
 .dash-name > .ic { color: var(--text-3); }
 .dash-row.git .dash-name > .ic { color: var(--accent); }

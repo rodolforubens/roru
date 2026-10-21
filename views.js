@@ -3,12 +3,12 @@
 // cards dragged between them). Also the properties block of an item's page, which shares the
 // value editors with the table.
 // A Branch property links a note to a branch of one of the space's repositories (notes as tasks).
-import * as S from './notes-store.js?v=0b7d26a';
-import * as G from './git.js?v=0b7d26a';
-import { esc, icon, folderName } from './util.js?v=0b7d26a';
-import { desktop } from './platform.js?v=0b7d26a';
-import { localPath, sharedPath } from './projects.js?v=0b7d26a';
-import { pickEmoji } from './emoji.js?v=0b7d26a';
+import * as S from './notes-store.js?v=7fcf47a';
+import * as G from './git.js?v=7fcf47a';
+import { esc, icon, folderName } from './util.js?v=7fcf47a';
+import { desktop } from './platform.js?v=7fcf47a';
+import { localPath, sharedPath } from './projects.js?v=7fcf47a';
+import { pickEmoji } from './emoji.js?v=7fcf47a';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 

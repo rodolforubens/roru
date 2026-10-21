@@ -2,10 +2,10 @@
 // its upstream, local changes, last commit), and fetch/pull for all of them at once.
 // Pulls here are fast-forward only, so they never create merge commits or stop on conflicts:
 // a branch that diverged from its upstream is reported, to be merged or rebased in its tab.
-import * as G from './git.js?v=0b7d26a';
-import * as P from './projects.js?v=0b7d26a';
-import { esc, fmtRelative, icon, folderName, normPath, plural } from './util.js?v=0b7d26a';
-import { desktop, invoke } from './platform.js?v=0b7d26a';
+import * as G from './git.js?v=7fcf47a';
+import * as P from './projects.js?v=7fcf47a';
+import { esc, fmtRelative, icon, folderName, normPath, plural } from './util.js?v=7fcf47a';
+import { desktop, invoke } from './platform.js?v=7fcf47a';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -249,7 +249,7 @@ function rowHtml(path) {
       missing: `<span class="bad">${icon('alert')}Not found on this computer — locate it from its menu</span>`,
       error: `<span class="bad" title="${esc(s?.message)}">${icon('alert')}Could not read the repository</span>`,
     }[kind]}</div>`;
-  return `<div class="dash-row ${kind}" data-path="${esc(path)}" title="${esc(path)}">
+  return `<div class="dash-row ${kind}" data-path="${esc(path)}" title="${esc(path)}" draggable="true">
     <div class="dash-name">${icon(kind === 'git' ? 'branch' : 'folder')}<div class="dash-nm"><b>${esc(folderName(path))}</b><span class="dash-path"><bdi>${esc(path)}</bdi></span></div></div>
     ${cells}
     <div class="dash-acts">${b ? busyTag(b) : rowButtons(s)}</div>
@@ -345,24 +345,28 @@ function action(act, path, el) {
   })[act]?.();
 }
 
-// Sections are dragged by their grip (unless their order is locked) and link cards by themselves;
-// a line shows where the dragged one will land.
-let dragging = null; // { kind: 'sec' | 'link', id }
+// Sections are dragged by their grip (unless their order is locked), and folder rows and link cards
+// by themselves; a line shows where the dragged one will land.
+let dragging = null; // { kind: 'sec' | 'folder' | 'link', id }
 
 function bindDrag(root) {
   const clear = () => root.querySelectorAll('.drop-before, .drop-after').forEach(el => el.classList.remove('drop-before', 'drop-after'));
-  const target = e => (dragging?.kind === 'sec' ? e.target.closest('.dash-block') : e.target.closest('.lk-card'));
+  const target = e => e.target.closest({ sec: '.dash-block', folder: '.dash-row', link: '.lk-card' }[dragging?.kind]);
+  const idOf = el => ({ sec: el.dataset.sec, folder: el.dataset.path, link: el.dataset.link }[dragging.kind]);
   const after = (el, e) => {
     const r = el.getBoundingClientRect();
-    return dragging.kind === 'sec' ? e.clientY > r.top + r.height / 2 : e.clientX > r.left + r.width / 2;
+    return dragging.kind === 'link' ? e.clientX > r.left + r.width / 2 : e.clientY > r.top + r.height / 2;
   };
   root.addEventListener('dragstart', e => {
-    const grip = e.target.closest?.('.dash-grip'), card = e.target.closest?.('.lk-card');
+    const grip = e.target.closest?.('.dash-grip'), card = e.target.closest?.('.lk-card'), row = e.target.closest?.('.dash-row');
     let el;
     if (grip && !project()?.sectionsLocked) {
       el = grip.closest('.dash-block');
       dragging = { kind: 'sec', id: el.dataset.sec };
       e.dataTransfer.setDragImage(el, 20, 20);
+    } else if (row) {
+      el = row;
+      dragging = { kind: 'folder', id: row.dataset.path };
     } else if (card) {
       el = card;
       dragging = { kind: 'link', id: card.dataset.link };
@@ -376,8 +380,7 @@ function bindDrag(root) {
     if (!el) return;
     e.preventDefault();
     clear();
-    const id = dragging.kind === 'sec' ? el.dataset.sec : el.dataset.link;
-    if (id !== dragging.id) el.classList.add(after(el, e) ? 'drop-after' : 'drop-before');
+    if (idOf(el) !== dragging.id) el.classList.add(after(el, e) ? 'drop-after' : 'drop-before');
   });
   root.addEventListener('drop', e => {
     const el = dragging && target(e);
@@ -388,6 +391,9 @@ function bindDrag(root) {
       P.moveSection(p.id, dragging.id, el.dataset.sec, late);
       // the sections are moved, not drawn again, so the folders and notes keep their state
       P.sections(p).forEach(sec => root.appendChild(root.querySelector(`.dash-block[data-sec="${sec}"]`)));
+    } else if (dragging.kind === 'folder') {
+      P.moveFolder(p.id, dragging.id, el.dataset.path, late);
+      paint();
     } else {
       P.moveLink(p.id, dragging.id, el.dataset.link, late);
       paintLinks();
@@ -546,10 +552,20 @@ function linkMenu(id) {
   ];
 }
 
+// "Move up/down", for touch screens (elsewhere the rows are dragged too).
+function moveItems(p, path) {
+  const list = P.folderPaths(p), i = list.indexOf(path);
+  const move = (target, after) => () => { P.moveFolder(p.id, path, target, after); paint(); };
+  return [
+    { label: 'Move up', disabled: i <= 0, run: move(list[i - 1], false) },
+    { label: 'Move down', disabled: i < 0 || i >= list.length - 1, run: move(list[i + 1], true) },
+  ];
+}
+
 function rowMenu(path) {
   const p = project(), s = info.get(path);
   const git = s?.kind === 'git', here = s && s.kind !== 'missing';
-  if (!desktop) return [{ label: 'Copy path', run: () => host.copy(path) }, '-', { label: 'Remove from the project', run: () => removeFolder(p.id, path) }];
+  if (!desktop) return [{ label: 'Copy path', run: () => host.copy(path) }, '-', ...moveItems(p, path), '-', { label: 'Remove from the project', run: () => removeFolder(p.id, path) }];
   return [
     here ? { label: 'Open', run: () => host.open(path) } : { label: 'Locate the folder…', run: () => locate(p.id, path) },
     ...(here ? [{ label: 'Use another folder on this computer…', run: () => locate(p.id, path) }] : []),
@@ -560,6 +576,8 @@ function rowMenu(path) {
     { label: 'Open terminal here', disabled: !here, run: () => terminal(path) },
     { label: 'Show in Explorer', disabled: !here, run: () => invoke('show_in_explorer', { repo: path, path: '' }).catch(e => host.toast('Show in Explorer failed', 'error', String(e))) },
     { label: 'Copy path', run: () => host.copy(path) },
+    '-',
+    ...moveItems(p, path),
     '-',
     { label: 'Remove from the project', run: () => removeFolder(p.id, path) },
   ];

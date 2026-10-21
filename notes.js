@@ -5,16 +5,16 @@
 // below as it was. Pages nest in other pages through their text (a link to the nested page, or a
 // database block); databases show in the tree as one item. Tabs and spaces belong to app.js (see
 // initNotesUi); the table and board views and the properties are in views.js.
-import * as S from './notes-store.js?v=0b7d26a';
-import * as G from './git.js?v=0b7d26a';
-import { createEditor, pickImages, addImages } from './editor.js?v=0b7d26a';
-import { pickEmoji } from './emoji.js?v=0b7d26a';
-import { toMarkdown } from './markdown.js?v=0b7d26a';
-import { sharedPath } from './projects.js?v=0b7d26a';
-import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView } from './views.js?v=0b7d26a';
-import { importNotion } from './notion-import.js?v=0b7d26a';
-import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative } from './util.js?v=0b7d26a';
-import { desktop, invoke, isMobile } from './platform.js?v=0b7d26a';
+import * as S from './notes-store.js?v=7fcf47a';
+import * as G from './git.js?v=7fcf47a';
+import { createEditor, pickImages, addImages } from './editor.js?v=7fcf47a';
+import { pickEmoji } from './emoji.js?v=7fcf47a';
+import { toMarkdown } from './markdown.js?v=7fcf47a';
+import { sharedPath } from './projects.js?v=7fcf47a';
+import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView } from './views.js?v=7fcf47a';
+import { importNotion } from './notion-import.js?v=7fcf47a';
+import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative } from './util.js?v=7fcf47a';
+import { desktop, invoke, isMobile } from './platform.js?v=7fcf47a';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
