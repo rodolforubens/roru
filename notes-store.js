@@ -21,11 +21,11 @@
 // 'board', name, sort, hidden, groupBy, pinned }) to show them.
 // Values by type: text and url a string, number a number, select an option id, multi a list of
 // option ids, date "YYYY-MM-DD", checkbox true, branch { repo (folder path), name }.
-import { desktop, invoke, convertFileSrc } from './platform.js?v=e6ba73e';
-import { db, currentUser } from './account.js?v=e6ba73e';
-import { createMirror, clone, reportStatus } from './mirror.js?v=e6ba73e';
-import { Y, updateYFragment, yDocToProsemirrorJSON } from './vendor/tiptap.js?v=e6ba73e';
-import { noteSchema, fitToSchema } from './editor.js?v=e6ba73e';
+import { desktop, invoke, convertFileSrc } from './platform.js?v=872b273';
+import { db, currentUser } from './account.js?v=872b273';
+import { createMirror, clone, reportStatus } from './mirror.js?v=872b273';
+import { Y, updateYFragment, yDocToProsemirrorJSON } from './vendor/tiptap.js?v=872b273';
+import { noteSchema, fitToSchema } from './editor.js?v=872b273';
 
 const SAVE_DELAY = 300; // ms after the last edit (files on this computer)
 

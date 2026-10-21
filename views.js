@@ -3,11 +3,11 @@
 // cards dragged between them). Also the properties block of an item's page, which shares the
 // value editors with the table.
 // A Branch property links a note to a branch of one of the space's repositories (notes as tasks).
-import * as S from './notes-store.js?v=e6ba73e';
-import * as G from './git.js?v=e6ba73e';
-import { esc, icon, folderName } from './util.js?v=e6ba73e';
-import { desktop } from './platform.js?v=e6ba73e';
-import { pickEmoji } from './emoji.js?v=e6ba73e';
+import * as S from './notes-store.js?v=872b273';
+import * as G from './git.js?v=872b273';
+import { esc, icon, folderName } from './util.js?v=872b273';
+import { desktop } from './platform.js?v=872b273';
+import { pickEmoji } from './emoji.js?v=872b273';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -896,8 +896,14 @@ function bindCollection(c) {
         return host.modal({ title: `New ${g.name} option`, input: '', placeholder: 'Name', ok: 'Add' }).then(m => m && S.addOption(key, g.id, m.value));
       }
       case 'group-menu': {
-        const group = colEl.dataset.group, pinned = view.pinned || [];
+        const group = colEl.dataset.group, pinned = view.pinned || [], g = groupProp(col, view);
+        // (moving past the columns shown: the pinned groups are in the order too, but not on the board)
+        const cols = g.options.filter(o => !pinned.includes(o.id)), at = cols.findIndex(o => o.id === group);
+        const after = o => g.options[g.options.indexOf(o) + 1]?.id ?? null;
         return host.showMenu(r.left, r.bottom + 4, [
+          ...(at > 0 ? [{ label: 'Move left', run: () => S.moveOption(key, g.id, group, cols[at - 1].id) }] : []),
+          ...(at >= 0 && at < cols.length - 1 ? [{ label: 'Move right', run: () => S.moveOption(key, g.id, group, after(cols[at + 1])) }] : []),
+          '-',
           { label: 'Pin group', run: () => S.updateView(key, view.id, { pinned: [...pinned.filter(x => x !== group), group] }) },
           ...(group ? ['-', ...optionMenuItems(key, groupProp(col, view).id, group)] : []),
         ]);
