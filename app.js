@@ -1,19 +1,19 @@
-import * as G from './git.js?v=8382e84';
-import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=8382e84';
-import { renderDiff, renderSubmodule, parseSubmoduleLog } from './diff.js?v=8382e84';
-import { partialPatch } from './patch.js?v=8382e84';
-import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=8382e84';
-import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=8382e84';
-import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=8382e84';
-import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=8382e84';
-import * as P from './projects.js?v=8382e84';
-import { syncStatus, onSyncStatus } from './mirror.js?v=8382e84';
-import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=8382e84';
-import * as S from './notes-store.js?v=8382e84';
-import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=8382e84';
-import * as M from './mobile.js?v=8382e84';
-import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=8382e84';
-import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=8382e84';
+import * as G from './git.js?v=ca59234';
+import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=ca59234';
+import { renderDiff, renderSubmodule, parseSubmoduleLog } from './diff.js?v=ca59234';
+import { partialPatch } from './patch.js?v=ca59234';
+import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=ca59234';
+import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=ca59234';
+import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=ca59234';
+import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=ca59234';
+import * as P from './projects.js?v=ca59234';
+import { syncStatus, onSyncStatus } from './mirror.js?v=ca59234';
+import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=ca59234';
+import * as S from './notes-store.js?v=ca59234';
+import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=ca59234';
+import * as M from './mobile.js?v=ca59234';
+import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=ca59234';
+import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=ca59234';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -2549,6 +2549,7 @@ function changesMenu(x, y, kind, files, dir = null) {
     '-',
     dir ? { label: 'Copy folder path', run: () => copy(dir) }
       : { label: many ? `Copy ${n} paths` : 'Copy path', run: () => copy(files.map(x => x.path).join('\n')) },
+    { label: 'Show in Files', disabled: many && !dir || !dir && f.status === 'D', run: () => showInFiles(dir ?? f.path) },
     { label: 'Show in Explorer', disabled: many && !dir, run: () => invoke('show_in_explorer', { repo: state.repo, path: dir ?? f.path }).catch(err => toast('Show in Explorer failed', 'error', String(err))) },
     { label: dir ? 'Add folder to .gitignore' : 'Add to .gitignore', disabled: untracked.length !== n, run: () => ignoreFiles(files, dir) },
     ...(!many && !dir && f.submodule ? [{ label: 'Open submodule', disabled: !cloned(state.submodules.find(s => s.path === f.path)), run: () => openSubmodule(f.path) }] : []),
@@ -3333,16 +3334,20 @@ initDashboard({
 });
 bindRail();
 
+// Switches the tab to the explorer, at the folder a file (or folder) of the repository is in, with it selected.
+function showInFiles(path) {
+  if (state.mode !== 'explorer') setMode('explorer');
+  revealPath(path);
+}
+
 // Opens what a mention in a note points to: a file in the explorer, a commit or a branch in the history.
 async function revealMention({ kind, id, repo }) {
   repo = P.localPath(repo);
   if (!desktop) return toast('Files, commits and branches open in the desktop app, which has the folders');
   if (!repo || !(await isFolder(repo))) return toast('Folder not found', 'error', repo || '');
   await openRepo(repo);
-  if (kind === 'file') {
-    if (state.mode !== 'explorer') setMode('explorer');
-    revealPath(id);
-  } else if (kind === 'commit') {
+  if (kind === 'file') showInFiles(id);
+  else if (kind === 'commit') {
     if (!state.plain) revealCommit(id);
   } else if (kind === 'branch') {
     if (!state.plain) revealRef(id);
