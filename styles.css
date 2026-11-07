@@ -1747,6 +1747,9 @@ html.mobile body { height: 100dvh; }
 /* no scrollbars taking room, like the phone's own apps */
 html.mobile ::-webkit-scrollbar { width: 0; height: 0; }
 html.mobile * { scrollbar-width: none; }
+/* no zooming the page with a pinch or a double tap, like an app (see platform.js); rules that set
+   their own touch-action (drags) still win */
+:where(html.mobile, html.mobile *) { touch-action: pan-x pan-y; }
 /* (a desktop window zoomed in that far keeps its buttons) */
 html.mobile #titlebar:has(#winctl:empty),
 html.mobile #rail, html.mobile #tabs, html.mobile #toolbar, html.mobile #statusbar, html.mobile #op-banner,
