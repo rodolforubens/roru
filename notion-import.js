@@ -4,9 +4,9 @@
 //   rows, with the database's columns as properties (types guessed from the values) and a table
 //   view; the CSV of another view of it (e.g. "Kanban <id>.csv") becomes a board view.
 // - Images are copied into the notes' files; links between exported pages become mentions.
-import * as S from './notes-store.js?v=870b4f7';
-import { readZip } from './zip.js?v=870b4f7';
-import { parseMarkdown } from './editor.js?v=870b4f7';
+import * as S from './notes-store.js?v=62e3e82';
+import { readZip } from './zip.js?v=62e3e82';
+import { parseMarkdown } from './editor.js?v=62e3e82';
 
 const utf8 = new TextDecoder('utf-8');
 const IMAGE = /\.(png|jpe?g|gif|webp|bmp|svg|avif|ico)$/i;

@@ -1,10 +1,10 @@
 // Diff rendering (unified or side-by-side split view), with buttons to stage or unstage each
 // hunk and selectable lines when asked. Submodule changes and Git LFS pointer files are shown
 // as summaries instead, and images, videos... as their versions before and after.
-import { esc, fmtSize } from './util.js?v=870b4f7';
-import { highlighterFor } from './highlight.js?v=870b4f7';
-import { parseDiff, canStageParts, MAX_LINES } from './patch.js?v=870b4f7';
-import { mediaChange, mediaBody, mediaLabel } from './media-diff.js?v=870b4f7';
+import { esc, fmtSize } from './util.js?v=62e3e82';
+import { highlighterFor } from './highlight.js?v=62e3e82';
+import { parseDiff, canStageParts, MAX_LINES } from './patch.js?v=62e3e82';
+import { mediaChange, mediaBody, mediaLabel } from './media-diff.js?v=62e3e82';
 
 // Adds syntax-highlighted html to each line. The old side (context + removed lines) and
 // the new side (context + added lines) are tokenized separately so that a comment or

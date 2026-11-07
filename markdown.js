@@ -1,10 +1,11 @@
 // Markdown from a note's content (a ProseMirror document as JSON), for exporting and copying notes.
-// `mention(attrs)` gives the text of a mention, `database(attrs)` the one of a database block (see editor.js).
+// `mention(attrs)` gives the text of a mention, `database(attrs)` the one of a database block and
+// `embed(attrs)` the one of a link shown as a card (its address by default; see editor.js).
 
 // Characters that would start Markdown syntax in plain text.
 const escText = s => s.replace(/([\\`*_[\]<>~|])/g, '\\$1').replace(/^(\s*)([#>+-]|\d+\.)(?=\s)/gm, '$1\\$2');
 
-export function toMarkdown(doc, { mention = a => `@${a.label ?? a.id}`, database = () => '' } = {}) {
+export function toMarkdown(doc, { mention = a => `@${a.label ?? a.id}`, database = () => '', embed = a => a.url || '' } = {}) {
   const inline = nodes => (nodes || []).map(n => {
     if (n.type === 'hardBreak') return '  \n';
     if (n.type === 'mention') return mention(n.attrs);
@@ -30,6 +31,7 @@ export function toMarkdown(doc, { mention = a => `@${a.label ?? a.id}`, database
       case 'horizontalRule': return '---';
       case 'image': return `![${n.attrs?.alt || ''}](${n.attrs?.src || ''})`;
       case 'database': return database(n.attrs);
+      case 'embed': return embed(n.attrs);
       case 'table': {
         // the first row is the header; cells keep their text on one line
         const rows = (n.content || []).map(r => (r.content || []).map(c => kids(c.content).join(' ').replace(/\n+/g, ' ').replace(/\|/g, '\\|')));

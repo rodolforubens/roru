@@ -5,16 +5,16 @@
 // below as it was. Pages nest in other pages through their text (a link to the nested page, or a
 // database block); databases show in the tree as one item. Tabs and spaces belong to app.js (see
 // initNotesUi); the table and board views and the properties are in views.js.
-import * as S from './notes-store.js?v=870b4f7';
-import * as G from './git.js?v=870b4f7';
-import { createEditor, pickImages, addImages } from './editor.js?v=870b4f7';
-import { pickEmoji } from './emoji.js?v=870b4f7';
-import { toMarkdown } from './markdown.js?v=870b4f7';
-import { sharedPath } from './projects.js?v=870b4f7';
-import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView } from './views.js?v=870b4f7';
-import { importNotion } from './notion-import.js?v=870b4f7';
-import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative } from './util.js?v=870b4f7';
-import { desktop, invoke, isMobile } from './platform.js?v=870b4f7';
+import * as S from './notes-store.js?v=62e3e82';
+import * as G from './git.js?v=62e3e82';
+import { createEditor, pickImages, addImages, embedOf } from './editor.js?v=62e3e82';
+import { pickEmoji } from './emoji.js?v=62e3e82';
+import { toMarkdown } from './markdown.js?v=62e3e82';
+import { sharedPath } from './projects.js?v=62e3e82';
+import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView } from './views.js?v=62e3e82';
+import { importNotion } from './notion-import.js?v=62e3e82';
+import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative } from './util.js?v=62e3e82';
+import { desktop, invoke, isMobile } from './platform.js?v=62e3e82';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -931,7 +931,8 @@ function cardHtml(n) {
   </div>`;
 }
 
-// The first picture of the note's text, and its start as plain text.
+// The first picture of the note's text (or of a YouTube video shown as a card in it), and its start
+// as plain text.
 async function previewOf(id) {
   const n = S.getNote(id);
   if (!n || n.kind === 'database') return { updated: n?.updated };
@@ -940,6 +941,7 @@ async function previewOf(id) {
   const parts = [];
   const walk = x => {
     if (x.type === 'image' && !cover && x.attrs?.src) cover = x.attrs.src;
+    if (x.type === 'embed' && !cover) cover = embedOf(x.attrs?.url)?.thumb || null; // a YouTube video's picture
     if (x.type === 'text') parts.push(x.text);
     if (x.type === 'mention') parts.push(`@${x.attrs?.kind === 'note' ? noteTitle(x.attrs.id) : x.attrs?.label ?? ''}`);
     x.content?.forEach(walk);

@@ -1,6 +1,6 @@
 // A small picker of emoji, for the icons of notes and views: common ones, or any typed or pasted in
 // its box (on a phone, the emoji keyboard).
-import { esc } from './util.js?v=870b4f7';
+import { esc } from './util.js?v=62e3e82';
 
 const COMMON = '📄 📝 📌 📎 📁 📂 🗂️ 📚 📖 📓 📒 📅 🗓️ ✅ ☑️ ❌ ⚠️ ❗ ❓ 💡 🔥 ⭐ 🌟 ✨ 🎯 🚀 🛠️ 🔧 🔨 ⚙️ 🧩 🧪 🐛 🔍 🔒 🔑 🏷️ 📊 📈 📉 🗺️ 🌍 🌲 🏔️ 🏗️ 🏙️ 🧱 🛣️ 🎮 🕹️ 🎨 🖌️ 🎬 🎵 💻 🖥️ 📱 ☁️ 🗄️ 💾 🧠 💬 📣 👀 👥 🤝 💰 🛒 🏁 🏆 🎉 ❤️ 💙 💚 💛 🟢 🟡 🔴 🔵 🟣 🟠 ⚪ ⚫'.split(' ');
 
