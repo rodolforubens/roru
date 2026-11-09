@@ -1,5 +1,5 @@
 // Thin layer over the `git` command exposed by the Rust backend.
-import { invoke } from './platform.js?v=4a073be';
+import { invoke } from './platform.js?v=441ce6d';
 
 const US = '\x1f'; // field separator
 const RS = '\x1e'; // record separator
@@ -354,25 +354,42 @@ export async function getCommitFiles(repo, sha) {
   return files;
 }
 
-export async function getCommitDiff(repo, sha, file) {
-  const paths = file.orig ? [file.orig, file.path] : [file.path];
-  return git(repo, ['show', '--format=', '-M', '--submodule=log', '--diff-merges=first-parent', sha, '--', ...paths]);
-}
+const filePaths = file => (file.orig ? [file.orig, file.path] : [file.path]);
 
 // The prefixes are fixed (whatever diff.noprefix or diff.mnemonicPrefix say) so that parts of
 // the diff can be turned into patches for `git apply`.
 const PREFIXES = ['--src-prefix=a/', '--dst-prefix=b/'];
 
+// The arguments of the diff of a file in a commit, or in the changes (staged or not); diffSizes
+// takes them too.
+export const commitDiffArgs = (sha, file) =>
+  ['show', '--format=', '-M', '--submodule=log', '--diff-merges=first-parent', sha, '--', ...filePaths(file)];
+
+export const workDiffArgs = (file, staged) => (file.untracked ? ['diff', ...PREFIXES, '--no-index', '--', '/dev/null', file.path]
+  : staged ? ['diff', '--cached', ...PREFIXES, '-M', '--submodule=log', '--', ...filePaths(file)]
+  : ['diff', ...PREFIXES, '--submodule=log', '--', file.path]);
+
+export const getCommitDiff = (repo, sha, file) => git(repo, commitDiffArgs(sha, file));
+
 export async function getWorkDiff(repo, file, staged) {
-  if (file.untracked) {
-    const r = await gitRaw(repo, ['diff', ...PREFIXES, '--no-index', '--', '/dev/null', file.path]);
-    return r.stdout;
-  }
-  if (staged) {
-    const paths = file.orig ? [file.orig, file.path] : [file.path];
-    return git(repo, ['diff', '--cached', ...PREFIXES, '-M', '--submodule=log', '--', ...paths]);
-  }
-  return git(repo, ['diff', ...PREFIXES, '--submodule=log', '--', file.path]);
+  const args = workDiffArgs(file, staged);
+  // --no-index exits with 1 when the files differ
+  return file.untracked ? (await gitRaw(repo, args)).stdout : git(repo, args);
+}
+
+// Sizes in bytes of the file before and after in the diff that `args` make (a diff of one file):
+// { old, new }, 0 for a side without the file, or null when git compares no content. They are the
+// sizes of the content as git stores it (line endings as in the repository), so the working copy
+// is measured like the versions it is compared with. Files bigger than core.bigFileThreshold are
+// binary to git, and --stat gives the sizes of binary files ("Bin 6 -> 7 bytes"); without renames,
+// a renamed file is one deleted and one added, so each side is the sum of the lines.
+export async function diffSizes(repo, args) {
+  const at = args.indexOf('--');
+  const r = await gitRaw(repo, ['-c', 'core.bigFileThreshold=1', ...args.slice(0, at), '--stat', '--no-color', '--no-renames', ...args.slice(at)]);
+  const lines = [...r.stdout.matchAll(/\|\s+Bin (\d+) -> (\d+) bytes/g)];
+  if (!lines.length) return null;
+  const sum = i => lines.reduce((n, m) => n + +m[i], 0);
+  return { old: sum(1), new: sum(2) };
 }
 
 // Applies a patch made by partialPatch (patch.js) to the index only: staging part of a file,

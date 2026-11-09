@@ -1,20 +1,20 @@
-import * as G from './git.js?v=4a073be';
-import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=4a073be';
-import { renderDiff, renderSubmodule, parseSubmoduleLog } from './diff.js?v=4a073be';
-import { loadMedia } from './media-diff.js?v=4a073be';
-import { partialPatch } from './patch.js?v=4a073be';
-import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=4a073be';
-import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=4a073be';
-import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=4a073be';
-import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=4a073be';
-import * as P from './projects.js?v=4a073be';
-import { syncStatus, onSyncStatus } from './mirror.js?v=4a073be';
-import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=4a073be';
-import * as S from './notes-store.js?v=4a073be';
-import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=4a073be';
-import * as M from './mobile.js?v=4a073be';
-import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=4a073be';
-import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=4a073be';
+import * as G from './git.js?v=441ce6d';
+import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=441ce6d';
+import { renderDiff, renderSubmodule, parseSubmoduleLog, loadSizes } from './diff.js?v=441ce6d';
+import { loadMedia } from './media-diff.js?v=441ce6d';
+import { partialPatch } from './patch.js?v=441ce6d';
+import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=441ce6d';
+import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=441ce6d';
+import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=441ce6d';
+import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=441ce6d';
+import * as P from './projects.js?v=441ce6d';
+import { syncStatus, onSyncStatus } from './mirror.js?v=441ce6d';
+import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=441ce6d';
+import * as S from './notes-store.js?v=441ce6d';
+import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=441ce6d';
+import * as M from './mobile.js?v=441ce6d';
+import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=441ce6d';
+import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=441ce6d';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -166,17 +166,19 @@ let diffPreview = store('diffPreview') ?? true;
 // `path` picks the syntax highlighting language. `part` ({ kind, path }: a file of the Changes
 // view) adds the controls to stage or unstage its hunks and selected lines. The selected lines
 // (`lines`, ids from parseDiff) stay while the diff shown is the same. `work`: the new side is
-// the working copy (for the previews of images, videos...).
-function showDiff(pane, text, title, path = title, part = null, work = part?.kind === 'unstaged') {
+// the working copy (for the previews of images, videos...). `args`, the git arguments that made
+// the diff, give the head the file's size before and after.
+function showDiff(pane, text, title, { path = title, part = null, work = part?.kind === 'unstaged', args = null } = {}) {
   const prev = pane._diff;
   const same = prev && prev.text === text && prev.path === path && prev.part?.kind === part?.kind;
   const layout = `${diffSplit} ${diffPreview}`;
   // A refresh that changes nothing keeps the previews as they are (a video keeps playing)
   if (same && prev.title === title && prev.layout === layout && pane.querySelector(':scope > .media-diff')) return;
-  pane._diff = { text, title, path, part, work, layout, lines: same ? prev.lines : new Set(), anchor: same ? prev.anchor : null };
+  pane._diff = { text, title, path, part, work, args, layout, lines: same ? prev.lines : new Set(), anchor: same ? prev.anchor : null };
   pane.innerHTML = renderDiff(text, { title, path, split: diffSplit, preview: diffPreview, stage: part && (part.kind === 'staged' ? 'unstage' : 'stage') });
   if (part) paintLines(pane);
   loadMedia(pane, state.repo, work);
+  loadSizes(pane, state.repo, args);
 }
 
 document.addEventListener('click', e => {
@@ -186,7 +188,7 @@ document.addEventListener('click', e => {
   if (btn.parentElement.querySelector('[data-diff-mode="preview"]')) store('diffPreview', diffPreview = mode === 'preview');
   if (mode !== 'preview') store('diffSplit', diffSplit = mode === 'split');
   const pane = btn.closest('.diff-pane'), d = pane?._diff;
-  if (d) showDiff(pane, d.text, d.title, d.path, d.part, d.work);
+  if (d) showDiff(pane, d.text, d.title, d);
 });
 
 // ---------- staging hunks and lines ----------
@@ -2116,9 +2118,10 @@ async function showCommitFile(k) {
   $(`.history .file-row[data-i="${k}"]`)?.classList.add('selected');
   const token = selectToken;
   try {
-    const diff = await G.getCommitDiff(state.repo, state.log[state.selected].sha, f);
+    const sha = state.log[state.selected].sha;
+    const diff = await G.getCommitDiff(state.repo, sha, f);
     if (token !== selectToken || state.commitFile !== f) return;
-    showDiff(pane, diff, f.path);
+    showDiff(pane, diff, f.path, { args: G.commitDiffArgs(sha, f) });
   } catch (e) {
     pane.innerHTML = `<div class="placeholder">${esc(e.message)}</div>`;
   }
@@ -2536,7 +2539,7 @@ async function showSelection({ quiet = false } = {}) {
     const text = await G.getWorkDiff(state.repo, f, kind === 'staged');
     if (token !== selectToken) return;
     const scroll = quiet && pane.dataset.shown === key ? pane.querySelector('.diff-scroll')?.scrollTop : 0;
-    showDiff(pane, text, f.path, f.path, { kind, path: f.path });
+    showDiff(pane, text, f.path, { part: { kind, path: f.path }, args: G.workDiffArgs(f, kind === 'staged') });
     pane.dataset.shown = key;
     if (scroll) pane.querySelector('.diff-scroll').scrollTop = scroll;
   } catch (e) {
@@ -2724,9 +2727,10 @@ async function showConflict(f, { token, quiet }) {
     if (quiet && same && pane.dataset.shown === key + ':clean') return;
     card('No conflict markers left', 'Review the result below, then mark the file as resolved.',
       [{ ...resolved, primary: true }, ...versions], { diff: true, shown: key + ':clean' });
-    const text = await g(['diff', '--ours', '--', f.path]).catch(e => e.message);
+    const args = ['diff', '--ours', '--', f.path];
+    const text = await g(args).catch(e => e.message);
     const dp = pane.querySelector('.rs-diff');
-    if (token === selectToken && dp) showDiff(dp, text, 'Compared with the current version', f.path, null, true);
+    if (token === selectToken && dp) showDiff(dp, text, 'Compared with the current version', { path: f.path, work: true, args });
     return;
   }
   if (quiet && same && pane.dataset.shown === key) return;

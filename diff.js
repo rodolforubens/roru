@@ -1,10 +1,11 @@
 // Diff rendering (unified or side-by-side split view), with buttons to stage or unstage each
 // hunk and selectable lines when asked. Submodule changes and Git LFS pointer files are shown
 // as summaries instead, and images, videos... as their versions before and after.
-import { esc, fmtSize } from './util.js?v=4a073be';
-import { highlighterFor } from './highlight.js?v=4a073be';
-import { parseDiff, canStageParts, MAX_LINES } from './patch.js?v=4a073be';
-import { mediaChange, mediaBody, mediaLabel } from './media-diff.js?v=4a073be';
+import { esc, fmtSize } from './util.js?v=441ce6d';
+import { highlighterFor } from './highlight.js?v=441ce6d';
+import { parseDiff, canStageParts, MAX_LINES } from './patch.js?v=441ce6d';
+import { mediaChange, mediaBody, mediaLabel } from './media-diff.js?v=441ce6d';
+import { diffSizes } from './git.js?v=441ce6d';
 
 // Adds syntax-highlighted html to each line. The old side (context + removed lines) and
 // the new side (context + added lines) are tokenized separately so that a comment or
@@ -165,19 +166,62 @@ function lfsChange(d) {
   return res.old === undefined || res.new === undefined || (!res.old && !res.new) ? null : res;
 }
 
-function renderLfs(change, titleHtml) {
+function renderLfs(change, titleHtml, sizes) {
   const oid = p => `<span class="mono">${esc(p.oid.replace(/^sha256:/, '').slice(0, 12))}</span>`;
   const size = p => esc(fmtSize(p.size));
   const { old: a, new: b } = change;
   const [heading, rows] = !a ? ['LFS file added', `<dt>Size</dt><dd>${size(b)}</dd><dt>Object</dt><dd>${oid(b)}</dd>`]
     : !b ? ['LFS file deleted', `<dt>Size</dt><dd>${size(a)}</dd><dt>Object</dt><dd>${oid(a)}</dd>`]
     : ['LFS file changed', `<dt>Size</dt><dd>${size(a)} → ${size(b)}</dd><dt>Object</dt><dd>${oid(a)} → ${oid(b)}</dd>`];
-  return `<div class="diff-head">${titleHtml}<span class="diff-stats"><span class="muted">Git LFS</span></span></div>
+  return `<div class="diff-head">${titleHtml}<span class="diff-stats">${sizes}<span class="muted">Git LFS</span></span></div>
     <div class="diff-scroll"><div class="info-card lfs-card">
       <h3>${heading}</h3>
       <dl class="kv">${rows}</dl>
       <p>Its content is stored with Git LFS; the repository only keeps a pointer to it.</p>
     </div></div>`;
+}
+
+// ---------- sizes ----------
+
+// The size of the file before and after, in the head of its diff: "12 MB → 13 MB (+1 MB)", or its
+// only size when it was added or deleted. `old`/`now` are bytes, or null for a side without it.
+function sizeChange(old, now) {
+  const bytes = n => `${n.toLocaleString('en-US')} bytes`;
+  if (old == null || now == null) {
+    const n = old ?? now;
+    return n == null ? '' : `<span class="diff-size" title="${bytes(n)}">${esc(fmtSize(n))}</span>`;
+  }
+  const d = now - old, delta = d ? `${d > 0 ? '+' : '−'}${fmtSize(Math.abs(d))}` : '±0';
+  return `<span class="diff-size" title="${bytes(old)} → ${bytes(now)}">${esc(`${fmtSize(old)} → ${fmtSize(now)} (${delta})`)}</span>`;
+}
+
+// Filled in by loadSizes. Only for the diff of one file whose content changed ("index <old>..<new>",
+// all zeros on the side without the file); the line names both contents, so it keys their sizes.
+function sizeSlot(text, d) {
+  const m = d.files <= 1 && text.match(/^index ([0-9a-f]+)\.\.([0-9a-f]+)/m);
+  if (!m) return '';
+  const has = id => !/^0+$/.test(id);
+  return `<span class="diff-size" data-key="${m[1]}..${m[2]}" data-old="${has(m[1])}" data-new="${has(m[2])}"></span>`;
+}
+
+const sizesCache = new Map();   // repo, contents and diff arguments -> promise of diffSizes
+const SIZES_CACHED = 500;
+
+// Shows the sizes of the file in the head of the diff in `pane`. `args` made the diff (see diffSizes).
+export async function loadSizes(pane, repo, args) {
+  const slot = pane.querySelector(':scope > .diff-head .diff-size[data-key]');
+  if (!slot || !args) return;
+  const key = `${repo}\n${slot.dataset.key}\n${args.join('\n')}`;
+  let p = sizesCache.get(key);
+  if (!p) {
+    sizesCache.set(key, (p = diffSizes(repo, args).catch(() => {
+      sizesCache.delete(key);
+      return null;
+    })));
+    if (sizesCache.size > SIZES_CACHED) sizesCache.delete(sizesCache.keys().next().value);
+  }
+  const s = await p;
+  if (s && slot.isConnected) slot.outerHTML = sizeChange(slot.dataset.old === 'true' ? s.old : null, slot.dataset.new === 'true' ? s.new : null);
 }
 
 // `preview` is null when the file has no other view than its text, else whether it is shown.
@@ -204,16 +248,19 @@ export function renderDiff(text, { title, split = false, preview = true, path, a
   const lfs = lfsChange(d);
   const metaHtml = d.meta.length ? `<div class="diff-meta">${d.meta.map(esc).join('<br>')}</div>` : '';
   const counts = `<span class="stat-add">+${d.added}</span> <span class="stat-del">−${d.removed}</span>`;
+  // Git LFS pointers have the sizes; the others are read by loadSizes.
+  const lfsSize = p => (p?.size ? +p.size : null);
+  const sizes = lfs ? sizeChange(lfsSize(lfs.old), lfsSize(lfs.new)) : sizeSlot(text, d);
   const media = path && d.files <= 1 ? mediaChange(text, path, lfs) : null;
   const textual = !!media && !lfs && d.hunks.length > 0;
   if (media && (preview || !textual)) {
     const stats = textual ? counts : `<span class="muted">${lfs ? 'Git LFS · ' : ''}${esc(mediaLabel(media))}</span>`;
-    return `<div class="diff-head">${titleHtml}<span class="diff-stats">${stats}</span>${textual ? layoutToggle(split, true) : ''}</div>`
+    return `<div class="diff-head">${titleHtml}<span class="diff-stats">${sizes}${stats}</span>${textual ? layoutToggle(split, true) : ''}</div>`
       + metaHtml + mediaBody(media);
   }
-  if (lfs) return renderLfs(lfs, titleHtml);
+  if (lfs) return renderLfs(lfs, titleHtml, sizes);
   highlight(d.hunks, path);
-  const stats = d.binary ? '<span class="muted">binary file</span>' : counts;
+  const stats = sizes + (d.binary ? '<span class="muted">binary file</span>' : counts);
   if (!canStageParts(d)) stage = null;
   const verb = stage === 'stage' ? 'Stage' : 'Unstage';
   const lineSel = stage && d.hunks.length ? `<span class="line-sel" hidden><span class="line-sel-n"></span>
