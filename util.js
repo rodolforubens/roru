@@ -1,4 +1,4 @@
-import { invoke } from './platform.js?v=441ce6d';
+import { invoke } from './platform.js?v=e588150';
 
 export function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -30,7 +30,7 @@ export function fmtSize(bytes) {
   const units = ['bytes', 'KB', 'MB', 'GB', 'TB'];
   let n = +bytes, u = 0;
   while (n >= 1024 && u < units.length - 1) { n /= 1024; u++; }
-  return u ? `${n.toFixed(n < 10 ? 1 : 0)} ${units[u]}` : `${n} bytes`;
+  return u ? `${n.toFixed(n < 10 ? 1 : 0)} ${units[u]}` : `${n} ${n === 1 ? 'byte' : 'bytes'}`;
 }
 
 export function fmtDuration(s) {

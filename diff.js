@@ -1,11 +1,11 @@
 // Diff rendering (unified or side-by-side split view), with buttons to stage or unstage each
 // hunk and selectable lines when asked. Submodule changes and Git LFS pointer files are shown
 // as summaries instead, and images, videos... as their versions before and after.
-import { esc, fmtSize } from './util.js?v=441ce6d';
-import { highlighterFor } from './highlight.js?v=441ce6d';
-import { parseDiff, canStageParts, MAX_LINES } from './patch.js?v=441ce6d';
-import { mediaChange, mediaBody, mediaLabel } from './media-diff.js?v=441ce6d';
-import { diffSizes } from './git.js?v=441ce6d';
+import { esc, fmtSize } from './util.js?v=e588150';
+import { highlighterFor } from './highlight.js?v=e588150';
+import { parseDiff, canStageParts, MAX_LINES } from './patch.js?v=e588150';
+import { mediaChange, mediaBody, mediaLabel } from './media-diff.js?v=e588150';
+import { diffSizes } from './git.js?v=e588150';
 
 // Adds syntax-highlighted html to each line. The old side (context + removed lines) and
 // the new side (context + added lines) are tokenized separately so that a comment or
@@ -186,7 +186,7 @@ function renderLfs(change, titleHtml, sizes) {
 // The size of the file before and after, in the head of its diff: "12 MB → 13 MB (+1 MB)", or its
 // only size when it was added or deleted. `old`/`now` are bytes, or null for a side without it.
 function sizeChange(old, now) {
-  const bytes = n => `${n.toLocaleString('en-US')} bytes`;
+  const bytes = n => `${n.toLocaleString('en-US')} ${n === 1 ? 'byte' : 'bytes'}`;
   if (old == null || now == null) {
     const n = old ?? now;
     return n == null ? '' : `<span class="diff-size" title="${bytes(n)}">${esc(fmtSize(n))}</span>`;
@@ -195,11 +195,13 @@ function sizeChange(old, now) {
   return `<span class="diff-size" title="${bytes(old)} → ${bytes(now)}">${esc(`${fmtSize(old)} → ${fmtSize(now)} (${delta})`)}</span>`;
 }
 
-// Filled in by loadSizes. Only for the diff of one file whose content changed ("index <old>..<new>",
-// all zeros on the side without the file); the line names both contents, so it keys their sizes.
+// Filled in by loadSizes, for the diff of one file. When its content changed, "index <old>..<new>"
+// names both contents (all zeros on the side without the file), which key their sizes; else only
+// its mode or its name changed (`data-key` empty), and it gets the one size it has.
 function sizeSlot(text, d) {
-  const m = d.files <= 1 && text.match(/^index ([0-9a-f]+)\.\.([0-9a-f]+)/m);
-  if (!m) return '';
+  if (d.files !== 1) return '';
+  const m = text.match(/^index ([0-9a-f]+)\.\.([0-9a-f]+)/m);
+  if (!m) return d.meta.length ? '<span class="diff-size" data-key=""></span>' : '';
   const has = id => !/^0+$/.test(id);
   return `<span class="diff-size" data-key="${m[1]}..${m[2]}" data-old="${has(m[1])}" data-new="${has(m[2])}"></span>`;
 }
@@ -208,20 +210,26 @@ const sizesCache = new Map();   // repo, contents and diff arguments -> promise 
 const SIZES_CACHED = 500;
 
 // Shows the sizes of the file in the head of the diff in `pane`. `args` made the diff (see diffSizes).
+// Only sizes of named contents are kept: the diff of a mode or a name stays the same when the
+// content of both sides changes.
 export async function loadSizes(pane, repo, args) {
   const slot = pane.querySelector(':scope > .diff-head .diff-size[data-key]');
   if (!slot || !args) return;
-  const key = `${repo}\n${slot.dataset.key}\n${args.join('\n')}`;
-  let p = sizesCache.get(key);
+  const { key: ids, old, new: now } = slot.dataset;
+  const key = ids && `${repo}\n${ids}\n${args.join('\n')}`;
+  let p = key && sizesCache.get(key);
   if (!p) {
-    sizesCache.set(key, (p = diffSizes(repo, args).catch(() => {
-      sizesCache.delete(key);
-      return null;
-    })));
-    if (sizesCache.size > SIZES_CACHED) sizesCache.delete(sizesCache.keys().next().value);
+    p = diffSizes(repo, args).catch(() => null);
+    if (key) {
+      sizesCache.set(key, p);
+      p.then(s => { if (!s && sizesCache.get(key) === p) sizesCache.delete(key); });
+      if (sizesCache.size > SIZES_CACHED) sizesCache.delete(sizesCache.keys().next().value);
+    }
   }
   const s = await p;
-  if (s && slot.isConnected) slot.outerHTML = sizeChange(slot.dataset.old === 'true' ? s.old : null, slot.dataset.new === 'true' ? s.new : null);
+  if (!s || !slot.isConnected) return;
+  // The same content: the size git has for it (the working copy's could count other line endings)
+  slot.outerHTML = ids ? sizeChange(old === 'true' ? s.old : null, now === 'true' ? s.new : null) : sizeChange(null, s.old || s.new);
 }
 
 // `preview` is null when the file has no other view than its text, else whether it is shown.

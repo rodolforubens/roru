@@ -1,5 +1,5 @@
 // Thin layer over the `git` command exposed by the Rust backend.
-import { invoke } from './platform.js?v=441ce6d';
+import { invoke } from './platform.js?v=e588150';
 
 const US = '\x1f'; // field separator
 const RS = '\x1e'; // record separator
@@ -378,18 +378,42 @@ export async function getWorkDiff(repo, file, staged) {
 }
 
 // Sizes in bytes of the file before and after in the diff that `args` make (a diff of one file):
-// { old, new }, 0 for a side without the file, or null when git compares no content. They are the
-// sizes of the content as git stores it (line endings as in the repository), so the working copy
-// is measured like the versions it is compared with. Files bigger than core.bigFileThreshold are
+// { old, new }, 0 for a side without the file, or null when git can't tell. They are the sizes of
+// the content as git stores it (line endings as in the repository), so the working copy is
+// measured like the versions it is compared with. Files bigger than core.bigFileThreshold are
 // binary to git, and --stat gives the sizes of binary files ("Bin 6 -> 7 bytes"); without renames,
 // a renamed file is one deleted and one added, so each side is the sum of the lines.
+// --stat gives none when the content is the same (only the mode or the name changed), or when git
+// compares it as text all the same (a byte or less, or `diff` set in .gitattributes): then the
+// sizes are those of the contents --raw names, the working copy's (no id) read from its folder.
 export async function diffSizes(repo, args) {
   const at = args.indexOf('--');
-  const r = await gitRaw(repo, ['-c', 'core.bigFileThreshold=1', ...args.slice(0, at), '--stat', '--no-color', '--no-renames', ...args.slice(at)]);
-  const lines = [...r.stdout.matchAll(/\|\s+Bin (\d+) -> (\d+) bytes/g)];
-  if (!lines.length) return null;
-  const sum = i => lines.reduce((n, m) => n + +m[i], 0);
-  return { old: sum(1), new: sum(2) };
+  const r = await gitRaw(repo, ['-c', 'core.bigFileThreshold=1', ...args.slice(0, at),
+    '--raw', '--no-abbrev', '--stat', '--no-color', '--no-renames', ...args.slice(at)]);
+  const bins = [...r.stdout.matchAll(/\|\s+Bin (\d+) -> (\d+) bytes/g)];
+  if (bins.length) return { old: bins.reduce((n, m) => n + +m[1], 0), new: bins.reduce((n, m) => n + +m[2], 0) };
+  // ":<mode> <mode> <old id> <new id> <status>\t<path>", zeros for a side without the file or the working copy
+  const raw = [...r.stdout.matchAll(/^:\d+ \d+ ([0-9a-f]+) ([0-9a-f]+) (\w)\w*\t(.*)$/gm)];
+  if (!raw.length) return null;
+  const none = id => /^0+$/.test(id);
+  const ids = [...new Set(raw.flatMap(m => [m[1], m[2]]).filter(id => !none(id)))];
+  const known = new Map();
+  if (ids.length) {
+    for (const line of (await git(repo, ['cat-file', '--batch-check'], `${ids.join('\n')}\n`)).split('\n')) {
+      const [id, type, size] = line.split(' ');
+      if (type === 'blob') known.set(id, +size);
+    }
+  }
+  const size = async (id, path, work) => {
+    if (!none(id)) return known.get(id) ?? null;
+    if (!work) return 0;
+    const entry = await statPath(repo, path).catch(() => null);
+    return entry?.size ?? null;
+  };
+  const sides = await Promise.all(raw.map(async ([, a, b, status, path]) =>
+    [await size(a, path, false), await size(b, path, status !== 'D')]));
+  if (sides.some(s => s.includes(null))) return null;
+  return { old: sides.reduce((n, s) => n + s[0], 0), new: sides.reduce((n, s) => n + s[1], 0) };
 }
 
 // Applies a patch made by partialPatch (patch.js) to the index only: staging part of a file,
