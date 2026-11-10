@@ -2,8 +2,8 @@
 // to-do lists, quotes, code blocks, links, images, tables, database blocks and cards of links (a
 // YouTube video, a post on X), with Markdown-like shortcuts ("# ", "- ", "[] "...), a "/" menu to
 // change or insert blocks, and "@" mentions of notes, files, commits and branches.
-import { Editor, Extension, Node, StarterKit, TaskList, TaskItem, Placeholder, Mention, Image, TableKit, Markdown, Suggestion, PluginKey, Collaboration, getSchema } from './vendor/tiptap.js?v=e588150';
-import { esc, icon } from './util.js?v=e588150';
+import { Editor, Extension, Node, StarterKit, TaskList, TaskItem, Placeholder, Mention, Image, TableKit, Markdown, Suggestion, Plugin, PluginKey, Decoration, DecorationSet, Collaboration, getSchema } from './vendor/tiptap.js?v=b0ce0eb';
+import { esc, icon } from './util.js?v=b0ce0eb';
 
 // The blocks and marks of a note's content. With a Yjs document (`opts.ydoc`) the undo history is
 // the collaboration's own.
@@ -15,6 +15,7 @@ const contentExtensions = (opts = {}) => [
   TaskList,
   TaskItem.configure({ nested: true }),
   ImageNode(opts),
+  ImageRows,
   TableKit.configure({ table: { resizable: false } }),
   DatabaseNode(opts),
   EmbedNode(opts),
@@ -216,23 +217,123 @@ function pastedEmbed(event) {
 }
 
 // Images keep where they are as `src`: a web address, or a file of the notes ("files/<note>/<name>")
-// that `fileUrl(src)` turns into an address the webview can load (or a promise of one).
+// that `fileUrl(src)` turns into an address the webview can load (or a promise of one). They are
+// inline, so several in a paragraph sit side by side; they are dragged to move them (next to
+// another image, or anywhere in the text).
 function ImageNode(opts) {
-  if (!opts.fileUrl) return Image.configure({ inline: true });
   return Image.configure({ inline: true }).extend({
     addNodeView() {
-      return ({ node }) => {
+      return ({ node, getPos }) => {
         const img = document.createElement('img');
-        const url = opts.fileUrl(node.attrs.src);
+        img.className = 'note-img';
+        const url = opts.fileUrl ? opts.fileUrl(node.attrs.src) : node.attrs.src;
         if (url?.then) url.then(u => { if (u) img.src = u; });
-        else img.src = url;
+        else if (url) img.src = url;
         img.alt = node.attrs.alt || '';
         if (node.attrs.title) img.title = node.attrs.title;
-        img.draggable = false;
+        // in a row of images, each one takes a width in proportion to its shape, so all have the
+        // same height
+        img.addEventListener('load', () => { img.style.flexGrow = String(img.naturalWidth / (img.naturalHeight || 1) || 1); });
+        img.getPos = getPos;
         return { dom: img };
       };
     },
   });
+}
+
+// A paragraph made only of images (two or more) is a row: they share its width (`img-row`).
+const imageRowsKey = new PluginKey('imageRows');
+const imageRows = doc => {
+  const decos = [];
+  doc.descendants((node, pos) => {
+    if (node.type.name !== 'paragraph') return true;
+    let images = 0, other = false;
+    node.forEach(c => {
+      if (c.type.name === 'image') images++;
+      else if (!(c.isText && !c.text.trim())) other = true;
+    });
+    if (images > 1 && !other) decos.push(Decoration.node(pos, pos + node.nodeSize, { class: 'img-row' }));
+    return false;
+  });
+  return DecorationSet.create(doc, decos);
+};
+const ImageRows = Extension.create({
+  name: 'imageRows',
+  addProseMirrorPlugins() {
+    return [new Plugin({
+      key: imageRowsKey,
+      state: {
+        init: (_, state) => imageRows(state.doc),
+        apply: (tr, set) => (tr.docChanged ? imageRows(tr.doc) : set),
+      },
+      props: { decorations: state => imageRowsKey.getState(state) },
+    })];
+  },
+});
+
+// ---------- what can be done to an image in the text ----------
+
+// The images of an editor's text, in order: [{ img (its element), url, alt }].
+export const imagesOf = editor => [...editor.view.dom.querySelectorAll('img.note-img')]
+  .map(img => ({ img, url: img.currentSrc || img.src, alt: img.alt }));
+
+// The menu of an image (its element `img`): `view()` opens it bigger; the rest moves it next to the
+// images around it, to a line of its own, or deletes it.
+export function imageMenuItems(editor, img, { view }) {
+  const pos = img.getPos?.();
+  const items = [{ label: 'View image', run: view }];
+  if (typeof pos !== 'number' || !editor.isEditable) return items;
+  const { doc } = editor.state;
+  const node = doc.nodeAt(pos);
+  if (node?.type.name !== 'image') return items;
+  const $pos = doc.resolve(pos), parent = $pos.parent, index = $pos.index();
+  const isImage = n => n?.type.name === 'image';
+  // the images next to it in its paragraph, skipping blanks between them
+  const near = step => {
+    for (let i = index + step; i >= 0 && i < parent.childCount; i += step) {
+      const c = parent.child(i);
+      if (isImage(c)) return { i, at: $pos.posAtIndex(i) };
+      if (!(c.isText && !c.text.trim())) return null;
+    }
+    return null;
+  };
+  const blankBefore = (from, to) => { for (let i = from; i < to; i++) if (!(parent.child(i).isText && !parent.child(i).text.trim())) return false; return true; };
+  const first = blankBefore(0, index), last = blankBefore(index + 1, parent.childCount);
+  // the paragraphs around this one, when the image is at their edge and they end (or start) in an image
+  const block = $pos.depth > 0 ? $pos.node($pos.depth - 1) : null, bIndex = $pos.index($pos.depth - 1);
+  const above = block && bIndex > 0 ? block.child(bIndex - 1) : null;
+  const below = block && bIndex < block.childCount - 1 ? block.child(bIndex + 1) : null;
+  const endsInImage = p => p?.type.name === 'paragraph' && p.childCount && isImage(p.lastChild);
+  const startsWithImage = p => p?.type.name === 'paragraph' && p.childCount && isImage(p.firstChild);
+  const run = fn => () => {
+    const tr = editor.state.tr;
+    fn(tr);
+    editor.view.dispatch(tr.scrollIntoView());
+  };
+  // takes the image out of its paragraph (and the paragraph too when nothing else is left in it)
+  const takeOut = tr => {
+    if (first && last) tr.delete($pos.before(), $pos.after());
+    else tr.delete(pos, pos + 1);
+  };
+  const left = near(-1), right = near(1);
+  items.push('-');
+  if (left) items.push({ label: 'Move left', run: run(tr => tr.delete(pos, pos + 1).insert(left.at, node)) });
+  if (right) items.push({ label: 'Move right', run: run(tr => tr.delete(pos, pos + 1).insert(right.at, node)) });
+  if (first && endsInImage(above)) {
+    items.push({ label: 'Put beside the image above', run: run(tr => { const at = $pos.before() - 1; takeOut(tr); tr.insert(at, node); }) });
+  }
+  if (last && startsWithImage(below)) {
+    items.push({ label: 'Put beside the image below', run: run(tr => { const at = $pos.after() + 1; tr.insert(at, node); takeOut(tr); }) });
+  }
+  if (!(first && last)) {
+    // splits its paragraph around it: what was before, the image, what was after
+    items.push({ label: 'Put on a line of its own', run: run(tr => {
+      if (!last) tr.split(pos + 1);
+      if (!first) tr.split(pos);
+    }) });
+  }
+  items.push('-', { label: 'Delete image', danger: true, run: run(takeOut) });
+  return items;
 }
 
 // Markdown to a note's content (JSON), with the same blocks notes have (used by imports).

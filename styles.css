@@ -1577,6 +1577,32 @@ body.note-page .git-side, body.note-page .ex-side, body:not(.note-page) .note-si
 /* images and tables in notes */
 .note-prose img { display: inline-block; max-width: 100%; height: auto; border-radius: 6px; vertical-align: bottom; }
 .note-prose img.ProseMirror-selectednode { outline: 2px solid var(--accent); outline-offset: 2px; }
+.note-prose img.note-img { cursor: zoom-in; }
+.note-prose img.note-img.ProseMirror-selectednode { cursor: grab; }
+/* a paragraph made only of images: a row where they share the width, all at the same height */
+.note-prose p.img-row { display: flex; align-items: flex-start; }
+.note-prose p.img-row > img.note-img { flex: 1 1 0; width: 0; min-width: 0; }
+.note-prose p.img-row > img.note-img ~ img.note-img { margin-left: 8px; }
+.note-prose p.img-row > .ProseMirror-separator, .note-prose p.img-row > .ProseMirror-trailingBreak { flex: none; width: 0; }
+
+/* the image viewer (image-viewer.js) */
+.iv { position: fixed; inset: 0; z-index: 900; display: flex; flex-direction: column; background: rgba(8, 10, 14, .96); color: #e6e9f0; outline: none; touch-action: none; user-select: none; }
+.iv-bar { position: relative; z-index: 1; background: rgba(8, 10, 14, .7); display: flex; align-items: center; gap: 12px; padding: 8px 10px 8px 16px; min-height: 44px; }
+.iv-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.iv-count { font-size: 12px; opacity: .7; font-variant-numeric: tabular-nums; }
+.iv-tools { display: flex; align-items: center; gap: 2px; }
+.iv-btn { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; height: 32px; padding: 0 6px; border: 0; border-radius: 6px; background: transparent; color: inherit; font: inherit; font-size: 12px; font-variant-numeric: tabular-nums; cursor: pointer; }
+.iv-btn:hover { background: rgba(255, 255, 255, .12); }
+.iv-zoom { min-width: 52px; }
+.iv-stage { position: relative; flex: 1; overflow: hidden; cursor: zoom-out; }
+.iv-img { position: absolute; left: 0; top: 0; max-width: none; transform-origin: 0 0; cursor: default; image-rendering: auto; }
+.iv-img.loading { visibility: hidden; }
+.iv.iv-pannable .iv-img { cursor: grab; }
+.iv.iv-pannable .iv-img:active { cursor: grabbing; }
+.iv-nav { position: absolute; top: 50%; transform: translateY(-50%); display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border: 0; border-radius: 50%; background: rgba(255, 255, 255, .12); color: inherit; cursor: pointer; }
+.iv-nav:hover { background: rgba(255, 255, 255, .22); }
+.iv-nav.prev { left: 12px; }
+.iv-nav.next { right: 12px; }
 .note-prose .tableWrapper { overflow-x: auto; margin: 8px 0; }
 .note-prose table:not(.vt) { width: 100%; margin: 8px 0; border-collapse: collapse; table-layout: fixed; font-size: 14px; }
 .note-prose .tableWrapper table:not(.vt) { margin: 0; }
