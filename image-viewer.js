@@ -1,8 +1,9 @@
 // The images of a note seen bigger, over the whole window: fit to it at first, zoomed with the
 // wheel, a touchpad pinch or two fingers (around where they point), +/−/0 or the buttons, moved by
-// dragging, and the note's other images one arrow away (← → on the keyboard). Escape, the close
-// button or a click outside the image closes it.
-import { icon } from './util.js?v=b0ce0eb';
+// dragging, and the note's other images one arrow away (← → on the keyboard). Ctrl+C, the copy
+// button or the context menu copies the image. Escape, the close button or a click outside the
+// image closes it.
+import { icon } from './util.js?v=24db4c7';
 
 const MAX = 16;
 
@@ -22,10 +23,12 @@ export function openImageViewer(list, index = 0) {
         <button class="iv-btn" data-iv="out" title="Zoom out (−)">${icon('minus')}</button>
         <button class="iv-btn iv-zoom" data-iv="actual" title="Actual size (1)"></button>
         <button class="iv-btn" data-iv="in" title="Zoom in (+)">${icon('plus')}</button>
+        <button class="iv-btn" data-iv="copy" title="Copy image (Ctrl+C)">${icon('copy')}</button>
         <button class="iv-btn" data-iv="fit" title="Fit to the window (0)">${icon('expand')}</button>
         <button class="iv-btn" data-iv="close" title="Close (Esc)">${icon('close')}</button>
       </span>
     </div>
+    <div class="iv-note" hidden></div>
     <div class="iv-stage"><img class="iv-img" alt="" draggable="false"></div>
     ${list.length > 1 ? `<button class="iv-nav prev" data-iv="prev" title="Previous (←)">${icon('back')}</button>
     <button class="iv-nav next" data-iv="next" title="Next (→)">${icon('forward')}</button>` : ''}`;
@@ -84,6 +87,24 @@ export function openImageViewer(list, index = 0) {
     img.alt = it.alt || '';
   };
 
+  // a short message over the image ("Image copied")
+  const note = el.querySelector('.iv-note');
+  let noteTimer;
+  const say = text => {
+    note.textContent = text;
+    note.hidden = false;
+    clearTimeout(noteTimer);
+    noteTimer = setTimeout(() => (note.hidden = true), 1800);
+  };
+  const copy = async () => {
+    try {
+      await copyImage(list[i].url);
+      say('Image copied');
+    } catch (e) {
+      say(`Could not copy the image — ${e.message || e}`);
+    }
+  };
+
   const close = () => {
     el.remove();
     removeEventListener('keydown', onKey, true);
@@ -97,12 +118,18 @@ export function openImageViewer(list, index = 0) {
     else if (what === 'in') zoomTo(scale * 1.5);
     else if (what === 'out') zoomTo(scale / 1.5);
     else if (what === 'fit') toFit();
+    else if (what === 'copy') copy();
     else if (what === 'actual') zoomTo(1);
   };
 
   // the keys are the viewer's while it is open (the note under it gets none)
   const onKey = e => {
     const keys = { Escape: 'close', ArrowLeft: 'prev', ArrowRight: 'next', '+': 'in', '=': 'in', '-': 'out', _: 'out', 0: 'fit', 1: 'actual' };
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'c') {
+      e.stopPropagation();
+      e.preventDefault();
+      return copy();
+    }
     if ((e.ctrlKey || e.metaKey) && !['Escape', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return; // Ctrl+=/−/0 still zoom the UI
     e.stopPropagation();
     const what = keys[e.key];
@@ -119,7 +146,23 @@ export function openImageViewer(list, index = 0) {
     if (b) return act(b.dataset.iv);
     if (e.target.closest('.iv-stage') && !moved && !onImage) close();
   });
-  el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); });
+  // the context menu of the image is a single choice: copying it
+  let menu = null;
+  const closeMenu = () => { menu?.remove(); menu = null; };
+  el.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    closeMenu();
+    if (e.target !== img) return;
+    menu = document.createElement('div');
+    menu.className = 'iv-menu';
+    menu.innerHTML = `<div class="mi">Copy image</div>`;
+    el.append(menu);
+    menu.style.left = `${Math.min(e.clientX, innerWidth - menu.offsetWidth - 6)}px`;
+    menu.style.top = `${Math.min(e.clientY, innerHeight - menu.offsetHeight - 6)}px`;
+    menu.onclick = ev => { ev.stopPropagation(); closeMenu(); copy(); };
+  });
+  el.addEventListener('pointerdown', e => { if (!e.target.closest('.iv-menu')) closeMenu(); }, true);
 
   // the wheel (and a touchpad pinch, which comes as Ctrl + wheel) zooms the image, not the UI
   el.addEventListener('wheel', e => {
@@ -185,4 +228,20 @@ export function openImageViewer(list, index = 0) {
 
   show(i);
   el.focus({ preventScroll: true });
+}
+
+// Puts the image at `url` on the clipboard, as a PNG (the one image type every browser takes).
+export async function copyImage(url) {
+  if (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined') throw new Error('the clipboard takes no images here');
+  const png = (async () => {
+    const blob = await (await fetch(url)).blob();
+    if (blob.type === 'image/png') return blob;
+    const bmp = await createImageBitmap(blob);
+    const canvas = Object.assign(document.createElement('canvas'), { width: bmp.width, height: bmp.height });
+    canvas.getContext('2d').drawImage(bmp, 0, 0);
+    bmp.close?.();
+    return new Promise((ok, fail) => canvas.toBlob(b => (b ? ok(b) : fail(new Error('could not read the image'))), 'image/png'));
+  })();
+  // (the promise goes in as it is: Safari only allows writing while the click is still being handled)
+  await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
 }

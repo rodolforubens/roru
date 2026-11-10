@@ -2,8 +2,8 @@
 // to-do lists, quotes, code blocks, links, images, tables, database blocks and cards of links (a
 // YouTube video, a post on X), with Markdown-like shortcuts ("# ", "- ", "[] "...), a "/" menu to
 // change or insert blocks, and "@" mentions of notes, files, commits and branches.
-import { Editor, Extension, Node, StarterKit, TaskList, TaskItem, Placeholder, Mention, Image, TableKit, Markdown, Suggestion, Plugin, PluginKey, Decoration, DecorationSet, Collaboration, getSchema } from './vendor/tiptap.js?v=b0ce0eb';
-import { esc, icon } from './util.js?v=b0ce0eb';
+import { Editor, Extension, Node, StarterKit, TaskList, TaskItem, Placeholder, Mention, Image, TableKit, Markdown, Suggestion, Plugin, PluginKey, Decoration, DecorationSet, Collaboration, getSchema } from './vendor/tiptap.js?v=24db4c7';
+import { esc, icon } from './util.js?v=24db4c7';
 
 // The blocks and marks of a note's content. With a Yjs document (`opts.ydoc`) the undo history is
 // the collaboration's own.
@@ -277,11 +277,11 @@ const ImageRows = Extension.create({
 export const imagesOf = editor => [...editor.view.dom.querySelectorAll('img.note-img')]
   .map(img => ({ img, url: img.currentSrc || img.src, alt: img.alt }));
 
-// The menu of an image (its element `img`): `view()` opens it bigger; the rest moves it next to the
+// The menu of an image (its element `img`): `view()` opens it bigger, `copy()` copies it; the rest moves it next to the
 // images around it, to a line of its own, or deletes it.
-export function imageMenuItems(editor, img, { view }) {
+export function imageMenuItems(editor, img, { view, copy }) {
   const pos = img.getPos?.();
-  const items = [{ label: 'View image', run: view }];
+  const items = [{ label: 'View image', run: view }, ...(copy ? [{ label: 'Copy image', run: copy }] : [])];
   if (typeof pos !== 'number' || !editor.isEditable) return items;
   const { doc } = editor.state;
   const node = doc.nodeAt(pos);

@@ -5,17 +5,17 @@
 // below as it was. Pages nest in other pages through their text (a link to the nested page, or a
 // database block); databases show in the tree as one item. Tabs and spaces belong to app.js (see
 // initNotesUi); the table and board views and the properties are in views.js.
-import * as S from './notes-store.js?v=b0ce0eb';
-import * as G from './git.js?v=b0ce0eb';
-import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=b0ce0eb';
-import { openImageViewer } from './image-viewer.js?v=b0ce0eb';
-import { pickEmoji } from './emoji.js?v=b0ce0eb';
-import { toMarkdown } from './markdown.js?v=b0ce0eb';
-import { sharedPath } from './projects.js?v=b0ce0eb';
-import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView } from './views.js?v=b0ce0eb';
-import { importNotion } from './notion-import.js?v=b0ce0eb';
-import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative } from './util.js?v=b0ce0eb';
-import { desktop, invoke, isMobile } from './platform.js?v=b0ce0eb';
+import * as S from './notes-store.js?v=24db4c7';
+import * as G from './git.js?v=24db4c7';
+import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=24db4c7';
+import { openImageViewer, copyImage } from './image-viewer.js?v=24db4c7';
+import { pickEmoji } from './emoji.js?v=24db4c7';
+import { toMarkdown } from './markdown.js?v=24db4c7';
+import { sharedPath } from './projects.js?v=24db4c7';
+import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView } from './views.js?v=24db4c7';
+import { importNotion } from './notion-import.js?v=24db4c7';
+import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative } from './util.js?v=24db4c7';
+import { desktop, invoke, isMobile } from './platform.js?v=24db4c7';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -674,7 +674,10 @@ function mountPage(container, id, place) {
     const img = page.editor && e.target.closest('img.note-img');
     if (img) {
       e.preventDefault();
-      return host.showMenu(e.clientX, e.clientY, imageMenuItems(page.editor, img, { view: () => viewImage(img) }));
+      const copy = () => copyImage(img.currentSrc || img.src)
+        .then(() => host.toast('Image copied', 'ok'))
+        .catch(err => host.toast('Could not copy the image', 'error', String(err.message || err)));
+      return host.showMenu(e.clientX, e.clientY, imageMenuItems(page.editor, img, { view: () => viewImage(img), copy }));
     }
     const link = e.target.closest('[data-open]');
     if (!link) return;

@@ -1603,6 +1603,9 @@ body.note-page .git-side, body.note-page .ex-side, body:not(.note-page) .note-si
 .iv-nav:hover { background: rgba(255, 255, 255, .22); }
 .iv-nav.prev { left: 12px; }
 .iv-nav.next { right: 12px; }
+.iv-note { position: absolute; left: 50%; top: 56px; z-index: 2; transform: translateX(-50%); padding: 6px 12px; border-radius: 6px; background: rgba(255, 255, 255, .14); font-size: 12px; pointer-events: none; }
+.iv-note[hidden] { display: none; }
+.iv-menu { position: fixed; z-index: 3; min-width: 140px; padding: 4px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-3); color: var(--text); box-shadow: var(--shadow); }
 .note-prose .tableWrapper { overflow-x: auto; margin: 8px 0; }
 .note-prose table:not(.vt) { width: 100%; margin: 8px 0; border-collapse: collapse; table-layout: fixed; font-size: 14px; }
 .note-prose .tableWrapper table:not(.vt) { margin: 0; }
