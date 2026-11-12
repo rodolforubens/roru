@@ -24,15 +24,17 @@ if (!desktop) document.documentElement.classList.add('web');
 const narrow = matchMedia('(max-width: 640px)');
 export const isMobile = () => narrow.matches;
 export const onMobileChange = fn => narrow.addEventListener('change', () => fn(narrow.matches));
-// There the page doesn't zoom, like an app: the viewport can't be scaled (the desktop's zoom, with
-// Ctrl, is the webview's own and stays), touches only pan (styles.css), and Safari, which ignores
-// user-scalable, has its pinch gestures stopped.
+// There the page doesn't zoom, like an app: the viewport can't be scaled (which also stops the zoom
+// into a focused text field; the desktop's zoom, with Ctrl, is the webview's own and stays), touches
+// only pan (styles.css), and Safari, which ignores user-scalable, has its pinch gestures stopped.
 const viewport = document.querySelector('meta[name="viewport"]');
 const baseViewport = viewport?.content || 'width=device-width, initial-scale=1';
 const markMobile = () => {
   document.documentElement.classList.toggle('mobile', narrow.matches);
-  if (viewport) viewport.content = narrow.matches ? `${baseViewport}, maximum-scale=1, user-scalable=no` : baseViewport;
+  if (viewport) viewport.content = narrow.matches ? `${baseViewport}, minimum-scale=1, maximum-scale=1, user-scalable=no` : baseViewport;
 };
 markMobile();
 narrow.addEventListener('change', markMobile);
-document.addEventListener('gesturestart', e => { if (narrow.matches) e.preventDefault(); });
+for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) {
+  document.addEventListener(ev, e => { if (narrow.matches) e.preventDefault(); }, { passive: false });
+}

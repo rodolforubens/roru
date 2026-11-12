@@ -3,10 +3,10 @@
 // Typing in the search box enters a transient search mode: the tree and the contents only show the
 // matching files and folders, until the search is cleared.
 // Also used for folders that are not Git repositories ("plain" folders), without the Git parts.
-import * as G from './git.js?v=aa2d18e';
-import { esc, fmtDate, fmtRelative, fmtSize, fmtDuration, debounce, store, icon, fileIcon, IMAGE, VIDEO, AUDIO, FONT, extOf } from './util.js?v=aa2d18e';
-import { highlighterFor } from './highlight.js?v=aa2d18e';
-import { invoke, convertFileSrc } from './platform.js?v=aa2d18e';
+import * as G from './git.js?v=274a7c9';
+import { esc, fmtDate, fmtRelative, fmtSize, fmtDuration, debounce, store, icon, fileIcon, IMAGE, VIDEO, AUDIO, FONT, extOf } from './util.js?v=274a7c9';
+import { highlighterFor } from './highlight.js?v=274a7c9';
+import { invoke, convertFileSrc } from './platform.js?v=274a7c9';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 

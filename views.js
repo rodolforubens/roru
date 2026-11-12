@@ -3,12 +3,12 @@
 // cards dragged between them). Also the properties block of an item's page, which shares the
 // value editors with the table.
 // A Branch property links a note to a branch of one of the space's repositories (notes as tasks).
-import * as S from './notes-store.js?v=aa2d18e';
-import * as G from './git.js?v=aa2d18e';
-import { esc, icon, folderName } from './util.js?v=aa2d18e';
-import { desktop } from './platform.js?v=aa2d18e';
-import { localPath, sharedPath } from './projects.js?v=aa2d18e';
-import { pickEmoji } from './emoji.js?v=aa2d18e';
+import * as S from './notes-store.js?v=274a7c9';
+import * as G from './git.js?v=274a7c9';
+import { esc, icon, folderName } from './util.js?v=274a7c9';
+import { desktop } from './platform.js?v=274a7c9';
+import { localPath, sharedPath } from './projects.js?v=274a7c9';
+import { pickEmoji } from './emoji.js?v=274a7c9';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -526,11 +526,18 @@ export function repaintViews() {
   for (const b of blocks) if (b.el.isConnected) paintProps(b); else blocks.delete(b);
 }
 
+// The parts of a collection that scroll on their own.
+const SCROLLERS = ['.cv-tabs', '.bd', '.vt-wrap'];
+
 function paint(c) {
   if (editing(c.el)) { c.dirty = true; return; }
   c.dirty = false;
   const key = S.collectionKey(c.space, c.parent), col = S.getCollection(key), view = activeView(col);
   const notes = S.childrenOf(c.space, c.parent);
+  // drawing again keeps where the board, the table and the view tabs were scrolled to (a card
+  // dropped in a column further right would otherwise send the board back to its first column)
+  const scrolled = c.view === view.id ? SCROLLERS.map(sel => { const x = $(sel, c.el); return x && [x.scrollLeft, x.scrollTop]; }) : [];
+  c.view = view.id;
   c.el.innerHTML = `<div class="cv cv-${c.ctx}">
     <div class="cv-bar">
       <div class="cv-tabs">${col.views.map(v => `<button class="cv-tab ${v === view ? 'on' : ''}" data-view="${v.id}">${icon(v.icon || VIEWS[v.type][1])}<span>${esc(v.name)}</span></button>`).join('')}
@@ -550,6 +557,10 @@ function paint(c) {
   } else {
     body.innerHTML = boardHtml(col, view, notes);
   }
+  SCROLLERS.forEach((sel, i) => {
+    const x = scrolled[i] && $(sel, c.el);
+    if (x) [x.scrollLeft, x.scrollTop] = scrolled[i];
+  });
   // the selection keeps the notes that are still shown
   const here = new Set(view.type === 'list' ? [] : notes.map(n => n.id));
   c.sel = new Set([...(c.sel || [])].filter(id => here.has(id)));
