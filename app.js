@@ -1,20 +1,20 @@
-import * as G from './git.js?v=24db4c7';
-import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=24db4c7';
-import { renderDiff, renderSubmodule, parseSubmoduleLog, loadSizes } from './diff.js?v=24db4c7';
-import { loadMedia } from './media-diff.js?v=24db4c7';
-import { partialPatch } from './patch.js?v=24db4c7';
-import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=24db4c7';
-import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=24db4c7';
-import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=24db4c7';
-import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=24db4c7';
-import * as P from './projects.js?v=24db4c7';
-import { syncStatus, onSyncStatus } from './mirror.js?v=24db4c7';
-import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=24db4c7';
-import * as S from './notes-store.js?v=24db4c7';
-import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=24db4c7';
-import * as M from './mobile.js?v=24db4c7';
-import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=24db4c7';
-import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=24db4c7';
+import * as G from './git.js?v=aa2d18e';
+import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=aa2d18e';
+import { renderDiff, renderSubmodule, parseSubmoduleLog, loadSizes } from './diff.js?v=aa2d18e';
+import { loadMedia } from './media-diff.js?v=aa2d18e';
+import { partialPatch } from './patch.js?v=aa2d18e';
+import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=aa2d18e';
+import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=aa2d18e';
+import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=aa2d18e';
+import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=aa2d18e';
+import * as P from './projects.js?v=aa2d18e';
+import { syncStatus, onSyncStatus } from './mirror.js?v=aa2d18e';
+import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=aa2d18e';
+import * as S from './notes-store.js?v=aa2d18e';
+import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=aa2d18e';
+import * as M from './mobile.js?v=aa2d18e';
+import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=aa2d18e';
+import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=aa2d18e';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -1831,7 +1831,7 @@ function renderMain() {
   else renderChanges();
 }
 
-const LOGO = '<svg class="logo" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="var(--bg-3)"/><path d="M176 128v256M176 304c0-64 160-48 160-112" fill="none" stroke="#7aa2f7" stroke-width="36" stroke-linecap="round"/><circle cx="176" cy="128" r="40" fill="#9ece6a"/><circle cx="176" cy="384" r="40" fill="#9ece6a"/><circle cx="336" cy="176" r="40" fill="#f7768e"/></svg>';
+const LOGO = '<img class="logo" src="icons/icon-192.png" alt="">';
 
 // The web page needs the account: signed out, the start page only offers to sign in.
 function renderSignIn() {
