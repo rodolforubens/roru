@@ -18,18 +18,22 @@
 // is shown in a page's text as a block (or opened on its own), and as a single item in the tree.
 // A database's collection, keyed by its id, defines custom properties ({ id, name, type, options }),
 // which its items fill in (`props`: property id -> value), and views ({ id, type: 'list' | 'table' |
-// 'board', name, sort, hidden, groupBy, pinned }) to show them.
+// 'board' | 'canvas', name, sort, hidden, groupBy, pinned }) to show them.
+// A canvas view also has `nodes` ({ id, note (an item's id) or text (canvas only), shape: 'box' |
+// 'sticky' | 'image' | 'ellipse' | 'diamond' | 'text', color, x, y, w, h }, the last ones on top;
+// an item can have several), `edges` (arrows: { id, from, to (node ids), label, ends: 'both' |
+// 'none' }), `off` (the items hidden from it) and `look` (the shape of the items placed by themselves).
 // Values by type: text and url a string, number a number, select an option id, multi a list of
 // option ids, date "YYYY-MM-DD", checkbox true, branch { repo (folder path), name }.
 //
 // A deleted note goes to the trash with what is inside it: it gets `trashed` (when), and it and the
 // notes inside it leave every list (getNote, childrenOf…) until it is restored or deleted for good
 // (see "The trash" below).
-import { desktop, invoke, convertFileSrc } from './platform.js?v=274a7c9';
-import { db, currentUser } from './account.js?v=274a7c9';
-import { createMirror, clone, reportStatus } from './mirror.js?v=274a7c9';
-import { Y, updateYFragment, yDocToProsemirrorJSON } from './vendor/tiptap.js?v=274a7c9';
-import { noteSchema, fitToSchema } from './editor.js?v=274a7c9';
+import { desktop, invoke, convertFileSrc } from './platform.js?v=9b437ff';
+import { db, currentUser } from './account.js?v=9b437ff';
+import { createMirror, clone, reportStatus } from './mirror.js?v=9b437ff';
+import { Y, updateYFragment, yDocToProsemirrorJSON } from './vendor/tiptap.js?v=9b437ff';
+import { noteSchema, fitToSchema } from './editor.js?v=9b437ff';
 
 const SAVE_DELAY = 300; // ms after the last edit (files on this computer)
 
@@ -386,6 +390,15 @@ export function restoreNote(id) {
 export function deleteForever(id) {
   if (!lookup(id)) return [];
   const ids = [id, ...descendantsOf(id, { trash: true }).map(n => n.id)];
+  // the canvases of its database forget it (in the trash, its copies only waited for it)
+  for (const v of collections[lookup(id).parent]?.views || []) {
+    const gone = new Set((v.nodes || []).filter(x => ids.includes(x.note)).map(x => x.id));
+    if (gone.size) {
+      v.nodes = v.nodes.filter(x => !gone.has(x.id));
+      if (v.edges) v.edges = v.edges.filter(e => !gone.has(e.from) && !gone.has(e.to));
+    }
+    if (v.off) v.off = v.off.filter(x => !ids.includes(x));
+  }
   all = all.filter(n => !ids.includes(n.id));
   for (const x of ids) {
     delete collections[x];

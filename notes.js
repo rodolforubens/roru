@@ -5,17 +5,17 @@
 // below as it was. Pages nest in other pages through their text (a link to the nested page, or a
 // database block); databases show in the tree as one item. Tabs and spaces belong to app.js (see
 // initNotesUi); the table and board views and the properties are in views.js.
-import * as S from './notes-store.js?v=274a7c9';
-import * as G from './git.js?v=274a7c9';
-import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=274a7c9';
-import { openImageViewer, copyImage } from './image-viewer.js?v=274a7c9';
-import { pickEmoji } from './emoji.js?v=274a7c9';
-import { toMarkdown } from './markdown.js?v=274a7c9';
-import { sharedPath } from './projects.js?v=274a7c9';
-import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView } from './views.js?v=274a7c9';
-import { importNotion } from './notion-import.js?v=274a7c9';
-import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative } from './util.js?v=274a7c9';
-import { desktop, invoke, isMobile } from './platform.js?v=274a7c9';
+import * as S from './notes-store.js?v=9b437ff';
+import * as G from './git.js?v=9b437ff';
+import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=9b437ff';
+import { openImageViewer, copyImage } from './image-viewer.js?v=9b437ff';
+import { pickEmoji } from './emoji.js?v=9b437ff';
+import { toMarkdown } from './markdown.js?v=9b437ff';
+import { sharedPath } from './projects.js?v=9b437ff';
+import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView } from './views.js?v=9b437ff';
+import { importNotion } from './notion-import.js?v=9b437ff';
+import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative } from './util.js?v=9b437ff';
+import { desktop, invoke, isMobile } from './platform.js?v=9b437ff';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -44,7 +44,7 @@ export async function initNotesUi(h) {
     noteMenu: id => noteMenuItems(id),
     openInMenu: openInItems,
     deleteNotes,
-    folders: h.folders, reveal: h.reveal, gitChanged: h.gitChanged,
+    folders: h.folders, reveal: h.reveal, gitChanged: h.gitChanged, preview: previewOf,
     showMenu: h.showMenu, modal: h.modal, confirmBox: h.confirmBox, toast: h.toast,
   });
   await S.initNotes();

@@ -1,5 +1,5 @@
 // Thin layer over the `git` command exposed by the Rust backend.
-import { invoke } from './platform.js?v=274a7c9';
+import { invoke } from './platform.js?v=9b437ff';
 
 const US = '\x1f'; // field separator
 const RS = '\x1e'; // record separator

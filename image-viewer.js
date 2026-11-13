@@ -3,7 +3,7 @@
 // dragging, and the note's other images one arrow away (← → on the keyboard). Ctrl+C, the copy
 // button or the context menu copies the image. Escape, the close button or a click outside the
 // image closes it.
-import { icon } from './util.js?v=274a7c9';
+import { icon } from './util.js?v=9b437ff';
 
 const MAX = 16;
 

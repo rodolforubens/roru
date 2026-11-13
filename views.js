@@ -1,14 +1,15 @@
 // The views of a database (its items), like in Notion: a list (the tree), a table (a spreadsheet of
-// the items and their properties) or a board (kanban: a column per option of a select property,
-// cards dragged between them). Also the properties block of an item's page, which shares the
-// value editors with the table.
+// the items and their properties), a board (kanban: a column per option of a select property,
+// cards dragged between them) or a canvas (cards put anywhere, see canvas.js). Also the properties
+// block of an item's page, which shares the value editors with the table.
 // A Branch property links a note to a branch of one of the space's repositories (notes as tasks).
-import * as S from './notes-store.js?v=274a7c9';
-import * as G from './git.js?v=274a7c9';
-import { esc, icon, folderName } from './util.js?v=274a7c9';
-import { desktop } from './platform.js?v=274a7c9';
-import { localPath, sharedPath } from './projects.js?v=274a7c9';
-import { pickEmoji } from './emoji.js?v=274a7c9';
+import * as S from './notes-store.js?v=9b437ff';
+import * as G from './git.js?v=9b437ff';
+import { esc, icon, folderName } from './util.js?v=9b437ff';
+import { desktop } from './platform.js?v=9b437ff';
+import { localPath, sharedPath } from './projects.js?v=9b437ff';
+import { pickEmoji } from './emoji.js?v=9b437ff';
+import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=9b437ff';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -16,7 +17,8 @@ const $ = (sel, root = document) => root.querySelector(sel);
 let host = null;
 
 // `h`: { mountTree(el, space, { parent, open }), noteMenu(id), deleteNotes(ids), folders() (of the
-// current space), reveal({ kind: 'branch', id, repo }), gitChanged(repo), showMenu, modal, confirmBox, toast }.
+// current space), reveal({ kind: 'branch', id, repo }), gitChanged(repo), preview(id) (a page's first
+// picture and the start of its text), showMenu, modal, confirmBox, toast }.
 export function initViews(h) {
   host = h;
   // Delete removes the selected notes (after asking), Escape clears the selection
@@ -35,7 +37,7 @@ export const TYPES = {
   text: ['Text', 'text'], number: ['Number', 'hash'], select: ['Select', 'select'], multi: ['Multi-select', 'tags'],
   date: ['Date', 'calendar'], checkbox: ['Checkbox', 'checkbox'], url: ['URL', 'link'], branch: ['Branch', 'branch'],
 };
-const VIEWS = { list: ['List', 'list'], table: ['Table', 'table'], board: ['Board', 'board'] };
+const VIEWS = { list: ['List', 'list'], table: ['Table', 'table'], board: ['Board', 'board'], canvas: ['Canvas', 'canvas'] };
 const COLOR_NAMES = { gray: 'Gray', brown: 'Brown', orange: 'Orange', yellow: 'Yellow', green: 'Green', blue: 'Blue', purple: 'Purple', pink: 'Pink', red: 'Red' };
 const hasOptions = p => p.type === 'select' || p.type === 'multi';
 const activeView = col => col.views.find(v => v.id === col.active) || col.views[0];
@@ -530,13 +532,16 @@ export function repaintViews() {
 const SCROLLERS = ['.cv-tabs', '.bd', '.vt-wrap'];
 
 function paint(c) {
-  if (editing(c.el)) { c.dirty = true; return; }
+  // (and while something is dragged on a canvas)
+  if (editing(c.el) || c.canvas?.busy) { c.dirty = true; return; }
   c.dirty = false;
   const key = S.collectionKey(c.space, c.parent), col = S.getCollection(key), view = activeView(col);
   const notes = S.childrenOf(c.space, c.parent);
   // drawing again keeps where the board, the table and the view tabs were scrolled to (a card
   // dropped in a column further right would otherwise send the board back to its first column)
   const scrolled = c.view === view.id ? SCROLLERS.map(sel => { const x = $(sel, c.el); return x && [x.scrollLeft, x.scrollTop]; }) : [];
+  // a canvas keeps the keys when it is drawn again
+  const focused = !!$('.cvs', c.el)?.contains(document.activeElement);
   c.view = view.id;
   c.el.innerHTML = `<div class="cv cv-${c.ctx}">
     <div class="cv-bar">
@@ -554,6 +559,8 @@ function paint(c) {
     else body.innerHTML = '<div class="cv-empty">No sub-pages yet</div>';
   } else if (view.type === 'table') {
     body.innerHTML = tableHtml(col, view, notes);
+  } else if (view.type === 'canvas') {
+    mountCanvas(body, c, { key, view, items: notes, host, repaint: () => paint(c), focus: focused });
   } else {
     body.innerHTML = boardHtml(col, view, notes);
   }
@@ -561,8 +568,8 @@ function paint(c) {
     const x = scrolled[i] && $(sel, c.el);
     if (x) [x.scrollLeft, x.scrollTop] = scrolled[i];
   });
-  // the selection keeps the notes that are still shown
-  const here = new Set(view.type === 'list' ? [] : notes.map(n => n.id));
+  // the selection keeps the notes that are still shown (a canvas has a selection of its own)
+  const here = new Set(view.type === 'list' || view.type === 'canvas' ? [] : notes.map(n => n.id));
   c.sel = new Set([...(c.sel || [])].filter(id => here.has(id)));
   paintSelection(c);
 }
@@ -832,8 +839,9 @@ export function addView(key, type) {
   return v;
 }
 
-// `ctx`: where the database is shown ('inline' in a page's text, 'page' on its own).
-function viewMenu(x, y, key, ctx) {
+// `c`: the collection shown (its `ctx`: where, 'inline' in a page's text or 'page' on its own).
+function viewMenu(x, y, key, c) {
+  const ctx = c.ctx;
   const page = S.getNote(S.getNote(key)?.parent);
   const col = S.getCollection(key), view = activeView(col);
   const selects = col.schema.filter(p => p.type === 'select');
@@ -842,7 +850,8 @@ function viewMenu(x, y, key, ctx) {
     { label: 'Rename view…', run: async () => { const r = await host.modal({ title: 'Rename view', input: view.name, ok: 'Rename' }); if (r) S.updateView(key, view.id, { name: r.value }); } },
     { label: view.icon ? 'Change icon…' : 'Add icon…', run: r => pickEmoji(r, view.icon, e => S.updateView(key, view.id, { icon: e })) },
     ...(view.type === 'board' && selects.length > 1 ? ['-', ...selects.map(p => ({ label: `Group by ${p.name}${g?.id === p.id ? '  ✓' : ''}`, run: () => S.updateView(key, view.id, { groupBy: p.id }) }))] : []),
-    ...(view.type !== 'list' && col.schema.length ? ['-', ...col.schema.filter(p => p.id !== g?.id).map(p => {
+    ...(view.type === 'canvas' ? ['-', ...canvasMenuItems(c, key, view, host)] : []),
+    ...((view.type === 'table' || view.type === 'board') && col.schema.length ? ['-', ...col.schema.filter(p => p.id !== g?.id).map(p => {
       const hidden = view.hidden?.includes(p.id);
       return { label: `${hidden ? 'Show' : 'Hide'} ${p.name}`, run: () => S.updateView(key, view.id, { hidden: hidden ? view.hidden.filter(x => x !== p.id) : [...(view.hidden || []), p.id] }) };
     })] : []),
@@ -888,10 +897,11 @@ function bindCollection(c) {
         return select(c, rows.every(x => c.sel.has(x)) ? [] : rows);
       }
       case 'add-view': return host.showMenu(r.left, r.bottom + 4, Object.entries(VIEWS).map(([t, [name]]) => ({ label: `${name} view`, run: () => addView(key, t) })));
-      case 'view-menu': return viewMenu(r.right - 220, r.bottom + 4, key, c.ctx);
+      case 'view-menu': return viewMenu(r.right - 220, r.bottom + 4, key, c);
       case 'new':
         if (view.type === 'table') return newRow(c);
         if (view.type === 'board') { const g = groupProp(col, view); return c.create(g?.options[0] ? { [g.id]: g.options[0].id } : {}); }
+        if (view.type === 'canvas') return canvasNew(c);
         return c.create({});
       case 'new-row': return newRow(c);
       case 'rename-card': return renameCard(btn.closest('.bd-card'), id);
@@ -958,7 +968,7 @@ function bindCollection(c) {
     e.preventDefault();
     if (tab) {
       S.setActiveView(keyOf(), tab.dataset.view);
-      return viewMenu(e.clientX, e.clientY, keyOf(), c.ctx);
+      return viewMenu(e.clientX, e.clientY, keyOf(), c);
     }
     if (c.sel.has(item.dataset.note) && c.sel.size > 1) return bulkMenu(c, e.clientX, e.clientY);
     select(c, [item.dataset.note]);
