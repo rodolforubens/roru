@@ -22,18 +22,19 @@
 // A canvas view also has `nodes` ({ id, note (an item's id) or text (canvas only), shape: 'box' |
 // 'sticky' | 'image' | 'ellipse' | 'diamond' | 'text', color, x, y, w, h }, the last ones on top;
 // an item can have several), `edges` (arrows: { id, from, to (node ids), label, ends: 'both' |
-// 'none' }), `off` (the items hidden from it) and `look` (the shape of the items placed by themselves).
+// 'none' }), `off` (the items hidden from it), `look` (the shape of the items placed by themselves)
+// and `snap` (nodes go along the grid).
 // Values by type: text and url a string, number a number, select an option id, multi a list of
 // option ids, date "YYYY-MM-DD", checkbox true, branch { repo (folder path), name }.
 //
 // A deleted note goes to the trash with what is inside it: it gets `trashed` (when), and it and the
 // notes inside it leave every list (getNote, childrenOf…) until it is restored or deleted for good
 // (see "The trash" below).
-import { desktop, invoke, convertFileSrc } from './platform.js?v=db3cd29';
-import { db, currentUser } from './account.js?v=db3cd29';
-import { createMirror, clone, reportStatus } from './mirror.js?v=db3cd29';
-import { Y, updateYFragment, yDocToProsemirrorJSON } from './vendor/tiptap.js?v=db3cd29';
-import { noteSchema, fitToSchema } from './editor.js?v=db3cd29';
+import { desktop, invoke, convertFileSrc } from './platform.js?v=2b9be23';
+import { db, currentUser } from './account.js?v=2b9be23';
+import { createMirror, clone, reportStatus } from './mirror.js?v=2b9be23';
+import { Y, updateYFragment, yDocToProsemirrorJSON } from './vendor/tiptap.js?v=2b9be23';
+import { noteSchema, fitToSchema } from './editor.js?v=2b9be23';
 
 const SAVE_DELAY = 300; // ms after the last edit (files on this computer)
 

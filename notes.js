@@ -5,17 +5,17 @@
 // below as it was. Pages nest in other pages through their text (a link to the nested page, or a
 // database block); databases show in the tree as one item. Tabs and spaces belong to app.js (see
 // initNotesUi); the table, board and canvas views and the properties are in views.js (and canvas.js).
-import * as S from './notes-store.js?v=db3cd29';
-import * as G from './git.js?v=db3cd29';
-import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=db3cd29';
-import { openImageViewer, copyImage } from './image-viewer.js?v=db3cd29';
-import { pickEmoji } from './emoji.js?v=db3cd29';
-import { toMarkdown } from './markdown.js?v=db3cd29';
-import { sharedPath } from './projects.js?v=db3cd29';
-import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView } from './views.js?v=db3cd29';
-import { importNotion } from './notion-import.js?v=db3cd29';
-import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative } from './util.js?v=db3cd29';
-import { desktop, invoke, isMobile } from './platform.js?v=db3cd29';
+import * as S from './notes-store.js?v=2b9be23';
+import * as G from './git.js?v=2b9be23';
+import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=2b9be23';
+import { openImageViewer, copyImage } from './image-viewer.js?v=2b9be23';
+import { pickEmoji } from './emoji.js?v=2b9be23';
+import { toMarkdown } from './markdown.js?v=2b9be23';
+import { sharedPath } from './projects.js?v=2b9be23';
+import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView } from './views.js?v=2b9be23';
+import { importNotion } from './notion-import.js?v=2b9be23';
+import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative } from './util.js?v=2b9be23';
+import { desktop, invoke, isMobile } from './platform.js?v=2b9be23';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -45,6 +45,12 @@ export async function initNotesUi(h) {
     openInMenu: openInItems,
     deleteNotes,
     folders: h.folders, reveal: h.reveal, gitChanged: h.gitChanged, preview: previewOf,
+    // a picture added to a note's text (at its end): returns its `src`
+    addImage: async (id, file) => {
+      const src = await uploadImage(id, file);
+      await appendToText(id, { type: 'paragraph', content: [{ type: 'image', attrs: { src, alt: file.name.replace(/\.[^.]+$/, '') } }] });
+      return src;
+    },
     showMenu: h.showMenu, modal: h.modal, confirmBox: h.confirmBox, toast: h.toast,
   });
   await S.initNotes();
@@ -104,9 +110,10 @@ export function newNote({ space = host.space(), parent = null, props = null, ope
 }
 
 // Creates a database with a first view (`view`: 'table', 'board', 'canvas' or 'list'). In a page, it shows
-// as a block at the end of the page's text (`block` false when the caller puts it somewhere else).
-export function newDatabase({ space = host.space(), parent = null, view = 'table', open = openPref(parent), block = true } = {}) {
-  const db = S.createNote({ space, parent, kind: 'database' });
+// as a block at the end of the page's text (`block` false when the caller puts it somewhere else); in
+// a database it is one of its items (with `props`).
+export function newDatabase({ space = host.space(), parent = null, view = 'table', props = null, open = openPref(parent), block = true } = {}) {
+  const db = S.createNote({ space, parent, kind: 'database', props });
   // the first view takes the place of the list a collection starts with
   const list = S.getCollection(db.id).views[0];
   addView(db.id, view);
@@ -602,6 +609,7 @@ function renderDatabaseBlock(el, id, page) {
     space: db.space, parent: id, ctx: 'inline',
     open: openItem,
     create: (props, open) => newNote({ space: db.space, parent: id, props, open }),
+    createDatabase: (view, props) => newDatabase({ space: db.space, parent: id, view, props, block: false }),
   });
 }
 
@@ -625,6 +633,7 @@ function mountPage(container, id, place) {
       space, parent: id, ctx: 'page',
       open: openItem,
       create: (props, open) => newNote({ space, parent: id, props, open }),
+      createDatabase: (view, props) => newDatabase({ space, parent: id, view, props, block: false }),
     });
   } else {
     renderProps($('.np-props', el), id);

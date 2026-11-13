@@ -2,8 +2,8 @@
 // to-do lists, quotes, code blocks, links, images, tables, database blocks and cards of links (a
 // YouTube video, a post on X), with Markdown-like shortcuts ("# ", "- ", "[] "...), a "/" menu to
 // change or insert blocks, and "@" mentions of notes, files, commits and branches.
-import { Editor, Extension, Node, StarterKit, TaskList, TaskItem, Placeholder, Mention, Image, TableKit, Markdown, Suggestion, Plugin, PluginKey, Decoration, DecorationSet, Collaboration, getSchema } from './vendor/tiptap.js?v=db3cd29';
-import { esc, icon } from './util.js?v=db3cd29';
+import { Editor, Extension, Node, StarterKit, TaskList, TaskItem, Placeholder, Mention, Image, TableKit, Markdown, Suggestion, Plugin, PluginKey, Decoration, DecorationSet, Collaboration, getSchema } from './vendor/tiptap.js?v=2b9be23';
+import { esc, icon } from './util.js?v=2b9be23';
 
 // The blocks and marks of a note's content. With a Yjs document (`opts.ydoc`) the undo history is
 // the collaboration's own.

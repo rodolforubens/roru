@@ -9,8 +9,8 @@
 // is written with the database like the other views. Items come onto the canvas by themselves (in a
 // free spot below what is there) unless they were hidden from it (`off`); removing an item's last
 // copy hides it. Where the canvas is looked at (moved and zoomed) is kept on this device only.
-import * as S from './notes-store.js?v=db3cd29';
-import { esc, icon, store } from './util.js?v=db3cd29';
+import * as S from './notes-store.js?v=2b9be23';
+import { esc, icon, store } from './util.js?v=2b9be23';
 
 const newId = () => crypto.randomUUID?.() ?? Date.now().toString(36) + Math.random().toString(36).slice(2);
 const clone = v => JSON.parse(JSON.stringify(v ?? null));
@@ -30,10 +30,46 @@ const titleOf = (n, item) => (item ? item.title || 'Untitled' : n.text || '');
 // A hue from the title, for pictures that aren't there (like the notes' cards).
 const hueOf = text => [...(text || 'x')].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
 
-// The pictures and the start of the text of the items (from host.preview), and the addresses of
-// the pictures once known, so drawing the canvas again doesn't make them blink.
+// The pictures and the start of the text of the items (from host.preview), the addresses of the
+// pictures once known, so drawing the canvas again doesn't make them blink, and their shapes.
 const previews = new Map(); // item id -> { updated, cover, text }
 const urls = new Map();     // "files/…" -> address
+const ratios = new Map();   // "files/…" -> width / height
+
+// An image node `w` wide whose picture is `ratio` (width / height): its height. Around the picture
+// are the node's border and padding (6px on each side, 6px on top), and below it the caption
+// (28px) or, with no title, 6px more.
+const IMAGE_CHROME = { x: 12, titled: 35, untitled: 12 };
+const imageHeight = (w, ratio, titled) => Math.round((w - IMAGE_CHROME.x) / ratio + (titled ? IMAGE_CHROME.titled : IMAGE_CHROME.untitled));
+
+// The shape of a picture of the notes (or of a pasted file), or null.
+async function ratioOfSrc(src) {
+  if (!src) return null;
+  if (ratios.has(src)) return ratios.get(src);
+  try {
+    const url = urls.get(src) || (await S.fileUrl(src));
+    if (!url) return null;
+    urls.set(src, url);
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const r = img.naturalWidth / (img.naturalHeight || 1) || null;
+    if (r) ratios.set(src, r);
+    return r;
+  } catch {
+    return null;
+  }
+}
+async function ratioOfFile(file) {
+  try {
+    const bmp = await createImageBitmap(file);
+    const r = bmp.width / (bmp.height || 1);
+    bmp.close();
+    return r || 1;
+  } catch {
+    return 4 / 3;
+  }
+}
 
 // Where each canvas was looked at, on this device.
 const camOf = id => store('canvasCamera')?.[id] || null;
@@ -85,6 +121,7 @@ export function canvasMenuItems(c, key, view, host) {
   const look = view.look || 'box';
   return [
     { label: 'New items look like…', run: r => host.showMenu(r.right + 2, r.top, LOOKS.map(s => ({ label: `${SHAPES[s]}${look === s ? '  ✓' : ''}`, run: () => S.updateView(key, view.id, { look: s }) }))) },
+    { label: `Snap to the grid${view.snap ? '  ✓' : ''}`, run: () => S.updateView(key, view.id, { snap: view.snap ? null : true }) },
     ...(api ? [
       { label: 'Fit to content', run: () => api.fit() },
       { label: store('canvasTray') ? 'Hide the items tray' : 'Show the items tray', run: () => api.toggleTray() },
@@ -119,6 +156,10 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
   const missing = items.filter(n => !copies.has(n.id) && !off.has(n.id));
   const hidden = items.filter(n => !copies.has(n.id)).length - missing.length;
   const tray = !!store('canvasTray');
+  // with the grid on, nodes go to its lines (positions and sizes)
+  const snapOn = () => !!V().snap;
+  const snap = v => (snapOn() ? Math.round(v / GRID) * GRID : Math.round(v));
+  const snapSize = v => (snapOn() ? Math.max(GRID, Math.round(v / GRID) * GRID) : Math.round(v));
 
   body.innerHTML = `<div class="cvs cvs-${c.ctx === 'page' ? 'page' : 'inline'} ${cv.active ? 'active' : ''} ${tray ? 'tray-open' : ''}" tabindex="0">
     <div class="cvs-world">
@@ -133,6 +174,7 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
       <button class="cvs-tb" data-cvs="new-shape" title="Shape (canvas only)">${icon('shape')}</button>
       <button class="cvs-tb" data-cvs="new-text" title="Text (canvas only)">${icon('text')}</button>
       <span class="cvs-sep"></span>
+      <button class="cvs-tb ${view.snap ? 'on' : ''}" data-cvs="snap" title="Snap to the grid: cards move and resize along its dots">${icon('magnet')}</button>
       <button class="cvs-tb ${tray ? 'on' : ''}" data-cvs="tray" title="The items: show or hide them, or drag one to add a copy">${icon('list')}<span>Items</span>${hidden ? `<b>${hidden} hidden</b>` : ''}</button>
     </div>
     <div class="cvs-zoom">
@@ -273,11 +315,11 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
     if (next.off) changes.off = next.off.length ? next.off : null;
     S.updateView(key, viewId, changes);
   }
-  const snap = () => ({ nodes: clone(allNodes()), edges: clone(allEdges()), off: clone(offList()) });
+  const snapshot = () => ({ nodes: clone(allNodes()), edges: clone(allEdges()), off: clone(offList()) });
 
   // A change that Ctrl+Z takes back (`undo`/`redo`: what else it does, like an item it created).
   function commit(next, { undo = null, redo = null } = {}) {
-    cv.undo.push({ state: snap(), undo, redo });
+    cv.undo.push({ state: snapshot(), undo, redo });
     if (cv.undo.length > 100) cv.undo.shift();
     cv.redo = [];
     write(next);
@@ -285,7 +327,7 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
   function undoRedo(from, to, how) {
     const h = from.pop();
     if (!h) return;
-    to.push({ state: snap(), undo: h.undo, redo: h.redo });
+    to.push({ state: snapshot(), undo: h.undo, redo: h.redo });
     S.batch(() => { h[how]?.(); write(h.state); });
   }
 
@@ -314,10 +356,11 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
   function addCopy(itemId, at = null) {
     const look = V().look || 'box', [w, h] = SIZES[look];
     const p = at || nextSpot();
-    const node = { id: newId(), note: itemId, shape: look, x: Math.round(p.x - w / 2), y: Math.round(p.y - h / 2), w, h };
+    const node = { id: newId(), note: itemId, shape: look, x: snap(p.x - w / 2), y: snap(p.y - h / 2), w, h };
     cv.sel = new Set([node.id]);
     cv.edge = null;
     commit({ nodes: [...allNodes(), node], off: offList().filter(id => id !== itemId) });
+    if (look === 'image') fitImages([node.id]);
     return node;
   }
 
@@ -339,6 +382,7 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
   const patchNodes = (ids, fn) => commit({ nodes: allNodes().map(n => (ids.includes(n.id) ? fn({ ...n }) : n)) });
 
   function setShape(ids, shape) {
+    const was = new Map(allNodes().map(n => [n.id, n.shape]));
     patchNodes(ids, n => {
       if (shape === 'image' && !n.note) return n;
       // a node that kept its look's size gets the size of the new one
@@ -348,6 +392,75 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
       n.shape = shape;
       return n;
     });
+    // an item shown as an image takes the shape of its picture
+    if (shape === 'image') fitImages(ids.filter(id => was.get(id) !== 'image'));
+  }
+
+  // The item's picture and the start of its text.
+  async function previewFor(item) {
+    const hit = previews.get(item.id);
+    if (hit && hit.updated === item.updated) return hit;
+    const p = await host.preview(item.id).catch(() => null);
+    if (p) previews.set(item.id, p);
+    return p;
+  }
+
+  // Image nodes take the shape of their picture, keeping their width (`undo`: a change of its own
+  // for Ctrl+Z, else part of the change that made them images).
+  async function fitImages(ids, { undo = false } = {}) {
+    const heights = new Map();
+    for (const id of ids) {
+      const n = allNodes().find(x => x.id === id), item = n?.note && S.getNote(n.note);
+      if (!item || n.shape !== 'image') continue;
+      const r = await ratioOfSrc((await previewFor(item))?.cover);
+      if (r) heights.set(id, imageHeight(n.w || SIZES.image[0], r, !!item.title));
+    }
+    if (!heights.size) return;
+    const next = { nodes: allNodes().map(n => (heights.has(n.id) ? { ...n, h: heights.get(n.id) } : n)) };
+    if (undo) commit(next);
+    else write(next);
+  }
+
+  // A double click on the resize handle: the node takes the shape of what it shows (an image the
+  // shape of its picture, a text the height of its text, the others the shape of their look).
+  function fitContent(id) {
+    const n = allNodes().find(x => x.id === id);
+    if (!n) return;
+    if (n.shape === 'image' && n.note) return fitImages([id], { undo: true });
+    const [dw, dh] = SIZES[n.shape] || SIZES.box, w = n.w || dw;
+    patchNodes([id], x => ({ ...x, h: n.shape === 'text' ? 24 : Math.round((w * dh) / dw) }));
+  }
+
+  // Pictures pasted or dropped on the canvas: each one an item of the database with the picture in
+  // its page, shown as an image of its shape, side by side from `p`.
+  async function addPictures(files, p = nextSpot()) {
+    let x = p.x;
+    const made = [];
+    for (const file of files) {
+      const ratio = await ratioOfFile(file);
+      const base = (file.name || '').replace(/\.[^.]+$/, '').trim();
+      const title = /^(image|img|screenshot|pasted.*|\d*)$/i.test(base) ? '' : base;
+      const w = 260, h = imageHeight(w, ratio, !!title);
+      const node = { id: newId(), shape: 'image', x: snap(x), y: snap(p.y - h / 2), w, h };
+      x += w + GRID;
+      let item = null;
+      await S.batch(() => {
+        item = S.createNote({ space: c.space, parent: c.parent, title });
+        node.note = item.id;
+        commit({ nodes: [...allNodes(), node] }, { undo: () => S.trashNote(item.id), redo: () => S.restoreNote(item.id) });
+      });
+      made.push(node.id);
+      try {
+        const src = await host.addImage(item.id, file);
+        ratios.set(src, ratio);
+        const p2 = { updated: S.getNote(item.id)?.updated, cover: src, text: '' };
+        previews.set(item.id, p2);
+        c.canvas?.api?.fill(item.id, p2);
+      } catch (e) {
+        host.toast('Could not add the image', 'error', String(e.message || e));
+      }
+    }
+    if (made.length) { cv.sel = new Set(made); c.canvas?.api?.paintSel(); }
   }
   const setColor = (ids, color) => patchNodes(ids, n => { if (color) n.color = color; else delete n.color; return n; });
 
@@ -380,7 +493,7 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
   // A new item of the database at `p`, its title typed right there; `from`: a node it is linked from.
   function newItemAt(p = nextSpot(), { shape = null, from = null } = {}) {
     const look = shape || V().look || 'box', [w, h] = SIZES[look];
-    const node = { id: newId(), shape: look, x: Math.round(p.x - w / 2), y: Math.round(p.y - h / 2), w, h };
+    const node = { id: newId(), shape: look, x: snap(p.x - w / 2), y: snap(p.y - h / 2), w, h };
     if (look === 'sticky') node.color = 'yellow';
     let item = null;
     cv.sel = new Set([node.id]);
@@ -396,7 +509,7 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
   // A text or a shape that lives only on the canvas, its text typed right there.
   function newFreeAt(shape, p = nextSpot(), from = null) {
     const [w, h] = SIZES[shape];
-    const node = { id: newId(), shape, text: '', x: Math.round(p.x - w / 2), y: Math.round(p.y - h / 2), w, h };
+    const node = { id: newId(), shape, text: '', x: snap(p.x - w / 2), y: snap(p.y - h / 2), w, h };
     if (shape === 'sticky') node.color = 'yellow';
     cv.sel = new Set([node.id]);
     cv.edge = null;
@@ -626,10 +739,14 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
             moving.set(i, cid);
           }
         }
+        // (with the grid on, the node held goes along its lines, and the others with it)
+        const main = start.get(id);
+        let ox = tx / cv.cam.z, oy = ty / cv.cam.z;
+        if (snapOn()) { ox = snap(main.x + ox) - main.x; oy = snap(main.y + oy) - main.y; }
         for (const [i, m] of moving) {
           const g = geo.get(m), s = start.get(i);
-          g.x = s.x + tx / cv.cam.z;
-          g.y = s.y + ty / cv.cam.z;
+          g.x = s.x + ox;
+          g.y = s.y + oy;
           const el = nodeEl(m);
           el.style.left = g.x + 'px';
           el.style.top = g.y + 'px';
@@ -655,13 +772,29 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
     });
   }
 
+  // The handle at the corner resizes the node keeping its shape (Shift: freely; a text only gets
+  // wider or narrower); a double click on it fits the node to what it shows.
   function resize(e, id) {
     const g = geo.get(id), el = nodeEl(id), w0 = g.w, h0 = g.h, text = g.shape === 'text';
+    const minW = 40, minH = text ? 24 : 30;
+    // (an image keeps the shape of its picture: its caption and border stay the same size)
+    const frame = el.querySelector('.cvs-frame');
+    const cx = frame ? w0 - frame.offsetWidth : 0, cy = frame ? h0 - frame.offsetHeight : 0;
     track(e, {
       threshold: 1,
       move: (ev, dx, dy, tx, ty) => {
-        g.w = Math.max(40, w0 + tx / cv.cam.z);
-        g.h = Math.max(text ? 24 : 30, h0 + ty / cv.cam.z);
+        let w = w0 + tx / cv.cam.z, h = h0 + ty / cv.cam.z;
+        if (!ev.shiftKey && !text) {
+          // the corner follows the pointer along the diagonal, so the shape stays
+          const k = Math.max((w - cx) / (w0 - cx), (h - cy) / (h0 - cy), (minW - cx) / (w0 - cx), (minH - cy) / (h0 - cy));
+          w = snapOn() ? snapSize(cx + (w0 - cx) * k) : cx + (w0 - cx) * k;
+          h = cy + ((w - cx) / (w0 - cx)) * (h0 - cy);
+        } else {
+          w = snapOn() ? snapSize(w) : w;
+          h = snapOn() && !text ? snapSize(h) : h;
+        }
+        g.w = Math.max(minW, w);
+        g.h = Math.max(minH, h);
         el.style.width = g.w + 'px';
         el.style[text ? 'minHeight' : 'height'] = g.h + 'px';
         if (text) el.style.height = '';
@@ -670,7 +803,8 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
       },
       up: (ev, moved, cancelled) => {
         if (cancelled) return repaint();
-        if (moved) patchNodes([id], n => ({ ...n, w: Math.round(g.w), h: Math.round(g.h) }));
+        if (moved) return patchNodes([id], n => ({ ...n, w: Math.round(g.w), h: Math.round(g.h) }));
+        if (double(`rs:${id}`)) fitContent(id);
       },
     });
   }
@@ -783,6 +917,30 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
   });
 
   // The wheel moves the canvas (Shift: sideways), Ctrl + wheel and a touchpad pinch zoom it, not the UI.
+  // Pictures pasted (where the pointer is, or else in the middle) or dropped become items.
+  root.addEventListener('pointermove', e => { cv.pointer = { x: e.clientX, y: e.clientY }; });
+  root.addEventListener('pointerleave', () => { cv.pointer = null; });
+  const pictures = list => [...(list || [])].filter(f => f.type.startsWith('image/'));
+  root.addEventListener('paste', e => {
+    if (e.target.closest('textarea, input')) return;
+    const files = pictures(e.clipboardData?.files);
+    if (!files.length) return;
+    e.preventDefault();
+    addPictures(files, cv.pointer ? toWorld(cv.pointer.x, cv.pointer.y) : undefined);
+  });
+  root.addEventListener('dragover', e => {
+    if (![...(e.dataTransfer?.items || [])].some(i => i.kind === 'file' && i.type.startsWith('image/'))) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  });
+  root.addEventListener('drop', e => {
+    const files = pictures(e.dataTransfer?.files);
+    if (!files.length) return;
+    e.preventDefault();
+    e.stopPropagation();
+    addPictures(files, toWorld(e.clientX, e.clientY));
+  });
+
   root.addEventListener('wheel', e => {
     if (c.ctx !== 'page' && !cv.active) return; // (the page scrolls)
     if (e.target.closest('.cvs-tray')) return;
@@ -814,6 +972,7 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
       case 'zoom-out': return zoomBy(0.8);
       case 'zoom-reset': { const rr = rect(); return zoomAt(1, rr.width / 2, rr.height / 2); }
       case 'fit': return fit();
+      case 'snap': return S.updateView(key, viewId, { snap: V().snap ? null : true });
       case 'toggle': {
         const id = row.dataset.item;
         return copies.has(id) ? hideItem(id) : addCopy(id);
@@ -949,8 +1108,9 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
     const arrow = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
     if (arrow && ids.length) {
       take();
-      const step = e.shiftKey ? GRID : 1;
-      return patchNodes(ids, n => ({ ...n, x: n.x + arrow[0] * step, y: n.y + arrow[1] * step }));
+      // (a grid step with Shift, or when the grid is on: then along its lines)
+      const step = e.shiftKey || snapOn() ? GRID : 1;
+      return patchNodes(ids, n => ({ ...n, x: snap(n.x + arrow[0] * step), y: snap(n.y + arrow[1] * step) }));
     }
   });
 
@@ -964,7 +1124,7 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
       <div class="cvs-tl">${items.map(n => {
         const k = copies.get(n.id) || 0;
         return `<div class="cvs-ti ${k ? '' : 'off'}" data-item="${n.id}" title="${k ? `On the canvas ${k === 1 ? 'once' : `${k} times`}: click to find it, drag it to add a copy` : 'Hidden from the canvas: drag it to put it there'}">
-          ${icon(n.icon || 'note')}<span class="cvs-tt ${n.title ? '' : 'untitled'}">${esc(n.title || 'Untitled')}</span>
+          ${icon(n.icon || (n.kind === 'database' ? 'table' : 'note'))}<span class="cvs-tt ${n.title ? '' : 'untitled'}">${esc(n.title || 'Untitled')}</span>
           <span class="cvs-tc">${k ? `${k}×` : 'Hidden'}</span>
           <button class="cv-btn" data-cvs="toggle" title="${k ? 'Hide from the canvas' : 'Show on the canvas'}">${icon(k ? 'eye' : 'eyeOff')}</button></div>`;
       }).join('') || '<div class="cvs-tray-empty">No items yet</div>'}</div>
@@ -1009,6 +1169,7 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
       if (!frame || !p.cover || frame.querySelector('img')) continue;
       const img = Object.assign(document.createElement('img'), { alt: '', draggable: false });
       img.onerror = () => img.remove();
+      img.onload = () => ratios.set(p.cover, img.naturalWidth / (img.naturalHeight || 1));
       const known = urls.get(p.cover);
       if (known) img.src = known;
       else {
@@ -1040,12 +1201,12 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
     } else if (shape === 'diamond') {
       inner = `<svg class="cvs-dia" viewBox="0 0 100 100" preserveAspectRatio="none"><polygon points="50,1 99,50 50,99 1,50" vector-effect="non-scaling-stroke"/></svg><div class="cvs-lb">${shown}</div>`;
     } else inner = `<div class="cvs-lb">${shown}</div>`;
-    const badge = item ? `<span class="cvs-badge" title="An item of the database${count > 1 ? `, on the canvas ${count} times` : ''}">${icon(item.icon || 'note')}${count > 1 ? `<b>${count}×</b>` : ''}</span>` : '';
+    const badge = item ? `<span class="cvs-badge" title="An item of the database${count > 1 ? `, on the canvas ${count} times` : ''}">${icon(item.icon || (item.kind === 'database' ? 'table' : 'note'))}${count > 1 ? `<b>${count}×</b>` : ''}</span>` : '';
     const size = `width:${w}px;${shape === 'text' ? 'min-' : ''}height:${h}px`;
     return `<div class="cvs-node s-${shape} ${n.color ? `k-${n.color} colored` : ''} ${item ? 'is-item' : 'is-free'} ${cv.sel.has(n.id) ? 'sel' : ''} ${empty ? 'empty' : ''}"
       data-node="${n.id}" ${item ? `data-item="${item.id}"` : ''} style="left:${n.x}px;top:${n.y}px;${size}">${inner}${badge}
       <span class="cvs-dot" data-side="t"></span><span class="cvs-dot" data-side="r"></span><span class="cvs-dot" data-side="b"></span><span class="cvs-dot" data-side="l"></span>
-      <span class="cvs-rs"></span></div>`;
+      <span class="cvs-rs" title="Drag to resize (Shift: freely), double-click to fit what it shows"></span></div>`;
   }
 
   // ---------- items that come by themselves ----------
@@ -1067,9 +1228,10 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
       const r = { x: b.x + (i % cols) * cw, y: b.y + Math.floor(i / cols) * ch, w, h };
       if (!free(r)) continue;
       taken.push(r);
-      add.push({ id: newId(), note: list[add.length].id, shape: look, x: Math.round(r.x), y: Math.round(r.y), w, h, ...(look === 'sticky' ? { color: 'yellow' } : {}) });
+      add.push({ id: newId(), note: list[add.length].id, shape: look, x: snap(r.x), y: snap(r.y), w, h, ...(look === 'sticky' ? { color: 'yellow' } : {}) });
     }
     write({ nodes: [...(v.nodes || []), ...add] });
+    if (look === 'image') fitImages(add.map(n => n.id));
   }
 
   // ---------- ready ----------
@@ -1083,7 +1245,7 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
   };
   height();
 
-  cv.api = { fit, toggleTray, edit, undo: () => undoRedo(cv.undo, cv.redo, 'undo'), newItem: () => newItemAt() };
+  cv.api = { fit, toggleTray, edit, fill, paintSel, undo: () => undoRedo(cv.undo, cv.redo, 'undo'), newItem: () => newItemAt() };
   cv.ro?.disconnect();
   cv.ro = new ResizeObserver(() => {
     if (!root.isConnected) return;

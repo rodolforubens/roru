@@ -3,13 +3,13 @@
 // cards dragged between them) or a canvas (cards put anywhere, see canvas.js). Also the properties
 // block of an item's page, which shares the value editors with the table.
 // A Branch property links a note to a branch of one of the space's repositories (notes as tasks).
-import * as S from './notes-store.js?v=db3cd29';
-import * as G from './git.js?v=db3cd29';
-import { esc, icon, folderName } from './util.js?v=db3cd29';
-import { desktop } from './platform.js?v=db3cd29';
-import { localPath, sharedPath } from './projects.js?v=db3cd29';
-import { pickEmoji } from './emoji.js?v=db3cd29';
-import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=db3cd29';
+import * as S from './notes-store.js?v=2b9be23';
+import * as G from './git.js?v=2b9be23';
+import { esc, icon, folderName } from './util.js?v=2b9be23';
+import { desktop } from './platform.js?v=2b9be23';
+import { localPath, sharedPath } from './projects.js?v=2b9be23';
+import { pickEmoji } from './emoji.js?v=2b9be23';
+import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=2b9be23';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -707,7 +707,7 @@ function tableHtml(col, view, notes) {
     + props.map(p => `<th class="pt-${p.type}" data-head="${p.id}">${icon(TYPES[p.type][1])}<span>${esc(p.name)}</span>${sortMark(view, p.id)}</th>`).join('')
     + `<th class="vt-addcol" data-cv="add-prop" title="Add a property">${icon('plus')}</th></tr>`;
   const row = n => `<tr data-note="${n.id}">
-      <td class="vt-title"><div class="vt-tcell"><button class="vt-check" data-cv="select" title="Select (Shift+click a row)">${icon('check')}</button>${icon(n.icon || 'note')}<span class="vt-tt ${n.title ? '' : 'untitled'}" data-cv="edit-title">${esc(n.title || 'Untitled')}</span>
+      <td class="vt-title"><div class="vt-tcell"><button class="vt-check" data-cv="select" title="Select (Shift+click a row)">${icon('check')}</button>${icon(itemIcon(n))}<span class="vt-tt ${n.title ? '' : 'untitled'}" data-cv="edit-title">${esc(n.title || 'Untitled')}</span>
         <button class="vt-open" data-cv="open">Open</button></div></td>
       ${props.map(p => `<td class="vt-cell pt-${p.type}" data-prop="${p.id}">${valueHtml(p, n.props?.[p.id])}</td>`).join('')}<td class="vt-fill"></td></tr>`;
   return `<div class="vt-wrap"><table class="vt"><thead>${head}</thead><tbody>${notes.length ? sorted(notes, view, col.schema).map(row).join('') : ''}</tbody></table>
@@ -765,7 +765,7 @@ function boardHtml(col, view, notes) {
       if (v == null || (p.type === 'checkbox' && !v)) return '';
       return `<div class="bd-prop pt-${p.type}">${p.type === 'checkbox' ? `${valueHtml(p, v)}<span>${esc(p.name)}</span>` : valueHtml(p, v)}</div>`;
     }).join('');
-    return `<div class="bd-card" data-note="${n.id}" draggable="true"><div class="bd-ct ${n.title ? '' : 'untitled'}">${n.icon ? icon(n.icon, 'bd-ic') : ''}${esc(n.title || 'Untitled')}</div>${props}
+    return `<div class="bd-card" data-note="${n.id}" draggable="true"><div class="bd-ct ${n.title ? '' : 'untitled'}">${n.icon || n.kind === 'database' ? icon(itemIcon(n), 'bd-ic') : ''}${esc(n.title || 'Untitled')}</div>${props}
       <button class="cv-btn bd-edit" data-cv="rename-card" title="Rename">${icon('pencil')}</button></div>`;
   };
   const label = o => (o ? chip(o) : `<span class="opt c-none">No ${esc(g.name)}</span>`);
@@ -961,7 +961,13 @@ function bindCollection(c) {
   el.addEventListener('mousedown', e => boxSelect(c, e));
 
   // The context menu of a selected note acts on the whole selection; on another note, on that one.
+  // On a "New" button, it offers a database as the new item (right inside this one) instead of a page.
   el.addEventListener('contextmenu', e => {
+    const newBtn = e.target.closest('[data-cv="new"], [data-cv="new-in"], [data-cv="new-top"], [data-cv="new-row"]');
+    if (newBtn && !e.target.closest('.cvs')) {
+      e.preventDefault();
+      return newMenu(c, newBtn, e.clientX, e.clientY);
+    }
     const tab = e.target.closest('.cv-tab');
     const item = e.target.closest('tr[data-note], .bd-card');
     if (!tab && !item) return;
@@ -1082,6 +1088,27 @@ function bindCollection(c) {
     el.querySelector('.bd-col.dragging-col')?.classList.remove('dragging-col');
   });
 }
+
+// The menu of a "New" button: a page (what a click makes) or a database right in this one (not a
+// page holding one), with a first view of its kind. From a board's column, it goes in the column.
+function newMenu(c, btn, x, y) {
+  const key = S.collectionKey(c.space, c.parent), col = S.getCollection(key), view = activeView(col);
+  const g = view.type === 'board' ? groupProp(col, view) : null;
+  const colEl = btn.closest('.bd-col');
+  const group = colEl ? colEl.dataset.group || null : btn.dataset.cv === 'new' ? g?.options[0]?.id ?? null : null;
+  const props = g && group ? { [g.id]: group } : {};
+  // (the "+" of a column's header puts it at the top of the column)
+  const top = btn.dataset.cv === 'new-top' ? colEl?.querySelector('.bd-card')?.dataset.note : null;
+  const place = n => { if (n && top) S.moveNote(n.id, n.parent ?? null, top); };
+  host.showMenu(x, y, [
+    { label: 'New page', run: () => place(c.create(props)) },
+    '-',
+    ...['table', 'board', 'list', 'canvas'].map(t => ({ label: `New database: ${VIEWS[t][0].toLowerCase()}`, run: () => place(c.createDatabase?.(t, props)) })),
+  ]);
+}
+
+// The icon of an item: its own, or a database's or a page's.
+const itemIcon = n => n.icon || (n.kind === 'database' ? 'table' : 'note');
 
 // A new row of the table, its title typed right there.
 function newRow(c) {
