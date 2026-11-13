@@ -2,8 +2,8 @@
 // to-do lists, quotes, code blocks, links, images, tables, database blocks and cards of links (a
 // YouTube video, a post on X), with Markdown-like shortcuts ("# ", "- ", "[] "...), a "/" menu to
 // change or insert blocks, and "@" mentions of notes, files, commits and branches.
-import { Editor, Extension, Node, StarterKit, TaskList, TaskItem, Placeholder, Mention, Image, TableKit, Markdown, Suggestion, Plugin, PluginKey, Decoration, DecorationSet, Collaboration, getSchema } from './vendor/tiptap.js?v=be3d348';
-import { esc, icon } from './util.js?v=be3d348';
+import { Editor, Extension, Node, StarterKit, TaskList, TaskItem, Placeholder, Mention, Image, TableKit, Markdown, Suggestion, Plugin, PluginKey, Decoration, DecorationSet, Collaboration, getSchema } from './vendor/tiptap.js?v=db3cd29';
+import { esc, icon } from './util.js?v=db3cd29';
 
 // The blocks and marks of a note's content. With a Yjs document (`opts.ydoc`) the undo history is
 // the collaboration's own.
@@ -241,18 +241,26 @@ function ImageNode(opts) {
   });
 }
 
-// A paragraph made only of images (two or more) is a row: they share its width (`img-row`).
+// A paragraph made only of images is a row: they share its width (`img-row`). Line breaks
+// (Shift+Enter) in it make several rows, one per line; an image alone on its line keeps its size
+// (`img-alone`).
 const imageRowsKey = new PluginKey('imageRows');
 const imageRows = doc => {
   const decos = [];
   doc.descendants((node, pos) => {
     if (node.type.name !== 'paragraph') return true;
-    let images = 0, other = false;
-    node.forEach(c => {
-      if (c.type.name === 'image') images++;
+    let other = false, line = [];
+    const lines = [line], breaks = [];
+    node.forEach((c, offset) => {
+      if (c.type.name === 'image') line.push(pos + 1 + offset);
+      else if (c.type.name === 'hardBreak') { lines.push(line = []); breaks.push(pos + 2 + offset); }
       else if (!(c.isText && !c.text.trim())) other = true;
     });
-    if (images > 1 && !other) decos.push(Decoration.node(pos, pos + node.nodeSize, { class: 'img-row' }));
+    if (other || !lines.some(l => l.length > 1)) return false;
+    decos.push(Decoration.node(pos, pos + node.nodeSize, { class: 'img-row' }));
+    for (const l of lines) if (l.length === 1) decos.push(Decoration.node(l[0], l[0] + 1, { class: 'img-alone' }));
+    // (a <br> can't start a line in a row: an element after it does)
+    for (const at of breaks) decos.push(Decoration.widget(at, () => Object.assign(document.createElement('span'), { className: 'img-break' }), { key: 'img-break', side: -1 }));
     return false;
   });
   return DecorationSet.create(doc, decos);

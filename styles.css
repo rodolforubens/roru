@@ -1579,10 +1579,15 @@ body.note-page .git-side, body.note-page .ex-side, body:not(.note-page) .note-si
 .note-prose img.ProseMirror-selectednode { outline: 2px solid var(--accent); outline-offset: 2px; }
 .note-prose img.note-img { cursor: zoom-in; }
 .note-prose img.note-img.ProseMirror-selectednode { cursor: grab; }
-/* a paragraph made only of images: a row where they share the width, all at the same height */
-.note-prose p.img-row { display: flex; align-items: flex-start; }
-.note-prose p.img-row > img.note-img { flex: 1 1 0; width: 0; min-width: 0; }
-.note-prose p.img-row > img.note-img ~ img.note-img { margin-left: 8px; }
+/* a paragraph made only of images: a row where they share the width, all at the same height; its
+   line breaks start another row, and an image alone on its line keeps its size */
+.note-prose p.img-row { display: flex; flex-wrap: wrap; align-items: flex-start; row-gap: 4px; }
+/* (at least 1px, so the first image after a line break doesn't fit on the break's line) */
+.note-prose p.img-row > img.note-img { flex: 1 1 0; width: 0; min-width: 1px; }
+.note-prose p.img-row > img.note-img.img-alone { flex: none; width: auto; max-width: 100%; }
+.note-prose p.img-row > img.note-img + img.note-img,
+.note-prose p.img-row > img.note-img + .ProseMirror-separator + img.note-img { margin-left: 8px; }
+.note-prose p.img-row > .img-break { flex: 0 0 100%; height: 0; }
 .note-prose p.img-row > .ProseMirror-separator, .note-prose p.img-row > .ProseMirror-trailingBreak { flex: none; width: 0; }
 
 /* the image viewer (image-viewer.js) */

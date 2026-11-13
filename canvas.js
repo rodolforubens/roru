@@ -9,8 +9,8 @@
 // is written with the database like the other views. Items come onto the canvas by themselves (in a
 // free spot below what is there) unless they were hidden from it (`off`); removing an item's last
 // copy hides it. Where the canvas is looked at (moved and zoomed) is kept on this device only.
-import * as S from './notes-store.js?v=be3d348';
-import { esc, icon, store } from './util.js?v=be3d348';
+import * as S from './notes-store.js?v=db3cd29';
+import { esc, icon, store } from './util.js?v=db3cd29';
 
 const newId = () => crypto.randomUUID?.() ?? Date.now().toString(36) + Math.random().toString(36).slice(2);
 const clone = v => JSON.parse(JSON.stringify(v ?? null));

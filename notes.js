@@ -5,17 +5,17 @@
 // below as it was. Pages nest in other pages through their text (a link to the nested page, or a
 // database block); databases show in the tree as one item. Tabs and spaces belong to app.js (see
 // initNotesUi); the table, board and canvas views and the properties are in views.js (and canvas.js).
-import * as S from './notes-store.js?v=be3d348';
-import * as G from './git.js?v=be3d348';
-import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=be3d348';
-import { openImageViewer, copyImage } from './image-viewer.js?v=be3d348';
-import { pickEmoji } from './emoji.js?v=be3d348';
-import { toMarkdown } from './markdown.js?v=be3d348';
-import { sharedPath } from './projects.js?v=be3d348';
-import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView } from './views.js?v=be3d348';
-import { importNotion } from './notion-import.js?v=be3d348';
-import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative } from './util.js?v=be3d348';
-import { desktop, invoke, isMobile } from './platform.js?v=be3d348';
+import * as S from './notes-store.js?v=db3cd29';
+import * as G from './git.js?v=db3cd29';
+import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=db3cd29';
+import { openImageViewer, copyImage } from './image-viewer.js?v=db3cd29';
+import { pickEmoji } from './emoji.js?v=db3cd29';
+import { toMarkdown } from './markdown.js?v=db3cd29';
+import { sharedPath } from './projects.js?v=db3cd29';
+import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView } from './views.js?v=db3cd29';
+import { importNotion } from './notion-import.js?v=db3cd29';
+import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative } from './util.js?v=db3cd29';
+import { desktop, invoke, isMobile } from './platform.js?v=db3cd29';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
