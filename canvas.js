@@ -7,10 +7,11 @@
 //
 // It is all kept in the view ({ type: 'canvas', look, nodes, edges, off }: see notes-store.js), so it
 // is written with the database like the other views. Items come onto the canvas by themselves (in a
-// free spot below what is there) unless they were hidden from it (`off`); removing an item's last
-// copy hides it. Where the canvas is looked at (moved and zoomed) is kept on this device only.
-import * as S from './notes-store.js?v=e5ab480';
-import { esc, icon, store, glider } from './util.js?v=e5ab480';
+// free spot below what is there) unless they were hidden from it (`off`); hiding an item's last
+// copy hides the item. Delete deletes what is selected (items to the trash, after a prompt), and F
+// frames it. Where the canvas is looked at (moved and zoomed) is kept on this device only.
+import * as S from './notes-store.js?v=9255558';
+import { esc, icon, store, glider, plural } from './util.js?v=9255558';
 
 const newId = () => crypto.randomUUID?.() ?? Date.now().toString(36) + Math.random().toString(36).slice(2);
 const clone = v => JSON.parse(JSON.stringify(v ?? null));
@@ -176,7 +177,7 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
       <button class="cvs-tb" data-cvs="new-text" title="Text (canvas only)">${icon('text')}</button>
       <span class="cvs-sep"></span>
       <button class="cvs-tb ${view.snap ? 'on' : ''}" data-cvs="snap" title="Snap to the grid: cards move and resize along its dots">${icon('magnet')}</button>
-      <button class="cvs-tb ${tray ? 'on' : ''}" data-cvs="tray" title="The items: show or hide them, or drag one to add a copy">${icon('list')}<span>Items</span>${hidden ? `<b>${hidden} hidden</b>` : ''}</button>
+      <button class="cvs-tb ${tray ? 'on' : ''}" data-cvs="tray" title="The items: open them, show or hide them, or drag one to add a copy">${icon('list')}<span>Items</span>${hidden ? `<b>${hidden} hidden</b>` : ''}</button>
     </div>
     <div class="cvs-zoom">
       <button class="cvs-tb" data-cvs="zoom-out" title="Zoom out">${icon('minus')}</button>
@@ -255,13 +256,15 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
   }
 
   // everything in view (at most at 100%), below the tools
-  function fit({ smooth = false } = {}) {
+  // (or only the nodes `ids`, up to 200%: F)
+  function fit({ smooth = false, ids = null } = {}) {
     const r = rect();
     if (r.width < 10) return (cv.needFit = true);
     cv.needFit = false;
-    const b = bounds([...geo.values()]);
+    const some = ids?.map(id => geo.get(id)).filter(Boolean);
+    const b = bounds(some?.length ? some : [...geo.values()]);
     if (!b) return moveCam({ x: 40, y: 64, z: 1 }, smooth);
-    const z = clampZ(Math.min(1, (r.width - 80) / b.w, (r.height - 120) / b.h));
+    const z = clampZ(Math.min(some?.length ? 2 : 1, (r.width - 80) / b.w, (r.height - 120) / b.h));
     moveCam({ z, x: (r.width - b.w * z) / 2 - b.x * z, y: 52 + (r.height - 52 - b.h * z) / 2 - b.y * z }, smooth);
   }
 
@@ -329,7 +332,7 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
     if (next.nodes) changes.nodes = next.nodes;
     if (next.edges) changes.edges = next.edges.length ? next.edges : null;
     if (next.off) changes.off = next.off.length ? next.off : null;
-    S.updateView(key, viewId, changes);
+    if (Object.keys(changes).length) S.updateView(key, viewId, changes);
   }
   const snapshot = () => ({ nodes: clone(allNodes()), edges: clone(allEdges()), off: clone(offList()) });
 
@@ -352,7 +355,8 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
     return { nodes: allNodes().filter(n => !gone.has(n.id)), edges: allEdges().filter(e => !gone.has(e.from) && !gone.has(e.to)) };
   };
 
-  // Takes copies off the canvas (never the items): an item whose last copy goes is hidden.
+  // Hides copies (takes them off the canvas, never the items): an item whose last copy goes is
+  // hidden. Canvas-only elements are deleted.
   function removeNodes(ids) {
     if (!ids.length) return;
     const next = withoutNodes(ids);
@@ -361,6 +365,36 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
     cv.sel = new Set();
     commit({ ...next, off: [...new Set([...offList(), ...gone])] });
   }
+
+  // Deletes the selected nodes: items go to the trash after a prompt, all their copies with them
+  // (kept in the view, for when they come back), and canvas-only elements go. Ctrl+Z puts them back.
+  async function deleteNodes(ids) {
+    const sel = allNodes().filter(n => ids.includes(n.id));
+    const itemIds = [...new Set(sel.map(n => n.note).filter(id => id && S.getNote(id)))];
+    const free = sel.filter(n => !n.note).map(n => n.id);
+    if (itemIds.length && free.length) {
+      // (both: one prompt that says so)
+      const ok = await host.confirmBox('Delete', `Move ${plural(itemIds.length, 'item')} to the trash and delete ${plural(free.length, 'canvas-only element')}?`, 'Delete');
+      if (!ok) return;
+      await host.deleteNotes(itemIds, { confirm: false });
+    } else if (itemIds.length) {
+      await host.deleteNotes(itemIds);
+      if (itemIds.every(id => S.getNote(id))) return; // (not deleted)
+    }
+    cv.sel = new Set([...cv.sel].filter(id => !ids.includes(id)));
+    const gone = itemIds.filter(id => !S.getNote(id));
+    // (Ctrl+Z here puts back both; the toast's Undo, the items)
+    commit(free.length ? withoutNodes(free) : {}, gone.length ? {
+      undo: () => gone.forEach(id => S.restoreNote(id)),
+      redo: () => gone.forEach(id => S.trashNote(id)),
+    } : {});
+    paintSel();
+  }
+  const deleteLabel = ids => {
+    const sel = allNodes().filter(n => ids.includes(n.id));
+    const k = new Set(sel.map(n => n.note).filter(Boolean)).size, f = sel.filter(n => !n.note).length;
+    return k && f ? `Delete ${plural(k, 'item')} and ${plural(f, 'element')}…` : k ? `Delete ${k > 1 ? `${k} items` : 'item'}…` : 'Delete';
+  };
 
   function hideItem(itemId) {
     const ids = allNodes().filter(n => n.note === itemId).map(n => n.id);
@@ -978,8 +1012,10 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
     const b = e.target.closest('[data-cvs]');
     const row = e.target.closest('.cvs-ti');
     if (!b) {
-      if (row) focusItem(row.dataset.item);
-      return;
+      if (!row) return;
+      // (two clicks open it)
+      if (double(`tray:${row.dataset.item}`)) return c.open(row.dataset.item, e, 'canvas');
+      return focusItem(row.dataset.item);
     }
     const r = b.getBoundingClientRect();
     switch (b.dataset.cvs) {
@@ -997,6 +1033,7 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
         const id = row.dataset.item;
         return copies.has(id) ? hideItem(id) : addCopy(id);
       }
+      case 'open-item': return c.open(row.dataset.item, e, 'canvas');
     }
   });
 
@@ -1033,12 +1070,16 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
       { label: 'Duplicate  (Ctrl+D)', run: () => duplicate(ids) },
       { label: 'Bring to front', run: () => toFront(ids, true) },
       { label: 'Send to back', run: () => toFront(ids, false) },
+      { label: ids.length > 1 ? 'Zoom to the selection  (F)' : 'Zoom to it  (F)', run: () => fit({ smooth: true, ids }) },
     ];
     if (ids.length > 1) {
+      const sel = allNodes().filter(n => ids.includes(n.id)), anyItem = sel.some(n => n.note), allItems = sel.every(n => n.note);
       return host.showMenu(x, y, [
         { label: `${ids.length} selected`, disabled: true, run: () => {} },
         '-', ...common, '-',
-        { label: 'Remove from the canvas', run: () => removeNodes(ids) },
+        // (canvas-only elements aren't hidden: they are deleted)
+        ...(anyItem ? [{ label: allItems ? 'Hide from the canvas' : 'Hide the items from the canvas', run: () => removeNodes(sel.filter(n => n.note).map(n => n.id)) }] : []),
+        { label: deleteLabel(ids), danger: true, run: () => deleteNodes(ids) },
       ]);
     }
     const n = allNodes().find(q => q.id === id), item = n?.note ? S.getNote(n.note) : null;
@@ -1053,9 +1094,9 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
       item ? { label: 'Convert to a canvas-only element…', run: () => toFree(id) } : { label: 'Convert to a database item', run: () => toItem(id) },
       '-',
       ...(item ? [
-        ...(count > 1 ? [{ label: 'Remove this copy', run: () => removeNodes([id]) }] : []),
+        ...(count > 1 ? [{ label: 'Hide this copy', run: () => removeNodes([id]) }] : []),
         { label: count > 1 ? 'Hide from the canvas (all copies)' : 'Hide from the canvas', run: () => hideItem(item.id) },
-        { label: 'Delete item…', danger: true, run: () => host.deleteNotes([item.id]) },
+        { label: 'Delete item…', danger: true, run: () => deleteNodes([id]) },
       ] : [{ label: 'Delete', danger: true, run: () => removeNodes([id]) }]),
     ]);
   }
@@ -1081,9 +1122,10 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
   function trayMenu(x, y, itemId) {
     const count = copies.get(itemId) || 0;
     host.showMenu(x, y, [
-      { label: 'Add a copy to the canvas', run: () => addCopy(itemId) },
-      count ? { label: 'Hide from the canvas', run: () => hideItem(itemId) } : { label: 'Show on the canvas', run: () => addCopy(itemId) },
       { label: 'Open', run: r => c.open(itemId, { clientX: r.left, clientY: r.top }, 'canvas') },
+      '-',
+      count ? { label: 'Hide from the canvas', run: () => hideItem(itemId) } : { label: 'Show on the canvas', run: () => addCopy(itemId) },
+      { label: 'Add a copy to the canvas', run: () => addCopy(itemId) },
     ]);
   }
 
@@ -1102,7 +1144,7 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
       ...createItems(p),
       '-',
       { label: 'Select all', run: () => select([...geo.keys()]) },
-      { label: 'Fit to content', run: fit },
+      { label: 'Fit to content  (F)', run: () => fit({ smooth: true }) },
       { label: tray ? 'Hide the items tray' : 'Show the items tray', run: toggleTray },
     ]);
   });
@@ -1119,8 +1161,14 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
     if (mod && k === 'd') { take(); return duplicate(ids); }
     if (e.key === 'Delete' || e.key === 'Backspace') {
       if (cv.edge) { take(); const id = cv.edge; cv.edge = null; return commit({ edges: allEdges().filter(q => q.id !== id) }); }
-      if (ids.length) { take(); return removeNodes(ids); }
+      if (ids.length) { take(); return deleteNodes(ids); }
       return;
+    }
+    // F: frames the selection (an arrow's two ends), or everything
+    if (!mod && !e.altKey && k === 'f') {
+      take();
+      const arrow = cv.edge && allEdges().find(q => q.id === cv.edge);
+      return fit({ smooth: true, ids: ids.length ? ids : arrow ? [arrow.from, arrow.to] : null });
     }
     if (e.key === 'Escape' && (ids.length || cv.edge)) { take(); return select([]); }
     if ((e.key === 'Enter' || e.key === 'F2') && ids.length === 1) { take(); return edit(ids[0]); }
@@ -1143,9 +1191,10 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
       <input class="cvs-tq" placeholder="Search the items" spellcheck="false" value="${esc(cv.trayQ)}">
       <div class="cvs-tl">${items.map(n => {
         const k = copies.get(n.id) || 0;
-        return `<div class="cvs-ti ${k ? '' : 'off'}" data-item="${n.id}" title="${k ? `On the canvas ${k === 1 ? 'once' : `${k} times`}: click to find it, drag it to add a copy` : 'Hidden from the canvas: drag it to put it there'}">
+        return `<div class="cvs-ti ${k ? '' : 'off'}" data-item="${n.id}" title="${k ? `On the canvas ${k === 1 ? 'once' : `${k} times`}: click to find it, double-click to open it, drag it to add a copy` : 'Hidden from the canvas: double-click to open it, drag it to show it there'}">
           ${icon(n.icon || (n.kind === 'database' ? 'table' : 'note'))}<span class="cvs-tt ${n.title ? '' : 'untitled'}">${esc(n.title || 'Untitled')}</span>
           <span class="cvs-tc">${k ? `${k}×` : 'Hidden'}</span>
+          <button class="cv-btn cvs-open" data-cvs="open-item" title="Open">${icon('open')}</button>
           <button class="cv-btn" data-cvs="toggle" title="${k ? 'Hide from the canvas' : 'Show on the canvas'}">${icon(k ? 'eye' : 'eyeOff')}</button></div>`;
       }).join('') || '<div class="cvs-tray-empty">No items yet</div>'}</div>
       <div class="cvs-tray-foot">An item can be on the canvas several times: drag it to add a copy.</div>

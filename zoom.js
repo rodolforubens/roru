@@ -2,7 +2,7 @@
 //   Ctrl + =  /  Ctrl + -  /  Ctrl + 0  and  Ctrl + mouse wheel (or touchpad pinch).
 // Uses the native WebView zoom (like Electron's setZoomFactor), falling back to CSS zoom, and
 // glides from one level to the next instead of jumping.
-import { store, glider } from './util.js?v=e5ab480';
+import { store, glider } from './util.js?v=9255558';
 
 export const STEPS = [0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3];
 

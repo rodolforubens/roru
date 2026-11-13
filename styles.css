@@ -2104,6 +2104,8 @@ html.mobile .nt-card .lk-body { padding: 8px 10px 9px; }
 .cvs-tc { flex: none; color: var(--text-3); font-size: 11.5px; font-variant-numeric: tabular-nums; }
 .cvs-ti .cv-btn { color: var(--text-3); }
 .cvs-ti:not(:hover):not(.off) .cv-btn { opacity: .45; }
+@media (hover: hover) { .cvs-ti:not(:hover) .cvs-open { display: none; } }
+.cvs-ti .cvs-open { margin-right: -4px; }
 .cvs-tray-empty { padding: 10px 8px; color: var(--text-3); font-size: 13px; }
 .cvs-tray-foot { padding: 8px 12px 10px; border-top: 1px solid var(--border); color: var(--text-3); font-size: 11.5px; line-height: 1.35; }
 .cvs-ghost {

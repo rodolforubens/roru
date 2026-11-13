@@ -1,8 +1,8 @@
 // The emoji picker, for the icons of notes and views: every emoji of the Unicode list (see
 // vendor/emoji.js), by group, found by its name and the words it goes with, the ones used lately
 // first; any typed or pasted in its box is taken too (on a phone, the emoji keyboard).
-import { esc, store } from './util.js?v=e5ab480';
-import { GROUPS } from './vendor/emoji.js?v=e5ab480';
+import { esc, store } from './util.js?v=9255558';
+import { GROUPS } from './vendor/emoji.js?v=9255558';
 
 const GROUP_ICONS = {
   'Smileys & Emotion': '😀', 'People & Body': '👋', 'Animals & Nature': '🐻', 'Food & Drink': '🍔', 'Travel & Places': '✈️',
