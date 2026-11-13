@@ -4,18 +4,18 @@
 // of the window) or in a center peek (over everything), like in Notion; the peeks leave the tab
 // below as it was. Pages nest in other pages through their text (a link to the nested page, or a
 // database block); databases show in the tree as one item. Tabs and spaces belong to app.js (see
-// initNotesUi); the table and board views and the properties are in views.js.
-import * as S from './notes-store.js?v=9b437ff';
-import * as G from './git.js?v=9b437ff';
-import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=9b437ff';
-import { openImageViewer, copyImage } from './image-viewer.js?v=9b437ff';
-import { pickEmoji } from './emoji.js?v=9b437ff';
-import { toMarkdown } from './markdown.js?v=9b437ff';
-import { sharedPath } from './projects.js?v=9b437ff';
-import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView } from './views.js?v=9b437ff';
-import { importNotion } from './notion-import.js?v=9b437ff';
-import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative } from './util.js?v=9b437ff';
-import { desktop, invoke, isMobile } from './platform.js?v=9b437ff';
+// initNotesUi); the table, board and canvas views and the properties are in views.js (and canvas.js).
+import * as S from './notes-store.js?v=be3d348';
+import * as G from './git.js?v=be3d348';
+import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=be3d348';
+import { openImageViewer, copyImage } from './image-viewer.js?v=be3d348';
+import { pickEmoji } from './emoji.js?v=be3d348';
+import { toMarkdown } from './markdown.js?v=be3d348';
+import { sharedPath } from './projects.js?v=be3d348';
+import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView } from './views.js?v=be3d348';
+import { importNotion } from './notion-import.js?v=be3d348';
+import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative } from './util.js?v=be3d348';
+import { desktop, invoke, isMobile } from './platform.js?v=be3d348';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -103,7 +103,7 @@ export function newNote({ space = host.space(), parent = null, props = null, ope
   return n;
 }
 
-// Creates a database with a first view (`view`: 'table', 'board' or 'list'). In a page, it shows
+// Creates a database with a first view (`view`: 'table', 'board', 'canvas' or 'list'). In a page, it shows
 // as a block at the end of the page's text (`block` false when the caller puts it somewhere else).
 export function newDatabase({ space = host.space(), parent = null, view = 'table', open = openPref(parent), block = true } = {}) {
   const db = S.createNote({ space, parent, kind: 'database' });
@@ -716,6 +716,9 @@ function mountPage(container, id, place) {
       }, {
         title: 'Database: board', hint: 'Items in columns by status', icon: 'board', keys: 'database db kanban board',
         run: database('board'),
+      }, {
+        title: 'Database: canvas', hint: 'Items as cards put anywhere, with arrows', icon: 'canvas', keys: 'database db canvas whiteboard flowchart diagram',
+        run: database('canvas'),
       }],
     });
     // a click in the empty space around the text puts the caret at its end
