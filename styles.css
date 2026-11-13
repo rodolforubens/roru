@@ -1274,6 +1274,10 @@ body.note-page .git-side, body.note-page .ex-side, body:not(.note-page) .note-si
 }
 .np-title::placeholder { color: var(--text-3); opacity: .7; }
 .np-children { margin-top: 36px; cursor: default; }
+/* a database in full screen: no icon nor title, its views right under the bar */
+.np-focus .np-icon-row, .np-focus .np-title { display: none; }
+.np-focus .np-doc { padding-top: 10px; }
+.np-focus .np-children { margin-top: 0; }
 /* full-width views: the sub-pages leave the column of the text for the whole width of the page */
 .np-wide .np-children, .np-wide .note-prose .db-block { --wide: calc(100cqw - 64px); width: var(--wide); margin-left: calc((100% - var(--wide)) / 2); }
 
@@ -1852,6 +1856,7 @@ html.signed-out #mbar, html.signed-out #mnav { display: none !important; }
 
 /* pages, dashboards and boards at a phone's width */
 html.mobile .np-doc { padding: 14px 16px 40vh; }
+html.mobile .np-focus .np-doc { padding-top: 6px; }
 html.mobile .np-title { font-size: 28px; }
 html.mobile .dash-head { padding: 16px 16px 12px; }
 /* (links in the same two columns as the notes' cards) */

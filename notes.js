@@ -5,17 +5,17 @@
 // below as it was. Pages nest in other pages through their text (a link to the nested page, or a
 // database block); databases show in the tree as one item. Tabs and spaces belong to app.js (see
 // initNotesUi); the table, board and canvas views and the properties are in views.js (and canvas.js).
-import * as S from './notes-store.js?v=2b9be23';
-import * as G from './git.js?v=2b9be23';
-import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=2b9be23';
-import { openImageViewer, copyImage } from './image-viewer.js?v=2b9be23';
-import { pickEmoji } from './emoji.js?v=2b9be23';
-import { toMarkdown } from './markdown.js?v=2b9be23';
-import { sharedPath } from './projects.js?v=2b9be23';
-import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView } from './views.js?v=2b9be23';
-import { importNotion } from './notion-import.js?v=2b9be23';
-import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative } from './util.js?v=2b9be23';
-import { desktop, invoke, isMobile } from './platform.js?v=2b9be23';
+import * as S from './notes-store.js?v=6c642f9';
+import * as G from './git.js?v=6c642f9';
+import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=6c642f9';
+import { openImageViewer, copyImage } from './image-viewer.js?v=6c642f9';
+import { pickEmoji } from './emoji.js?v=6c642f9';
+import { toMarkdown } from './markdown.js?v=6c642f9';
+import { sharedPath } from './projects.js?v=6c642f9';
+import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView, focusedDb } from './views.js?v=6c642f9';
+import { importNotion } from './notion-import.js?v=6c642f9';
+import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative } from './util.js?v=6c642f9';
+import { desktop, invoke, isMobile } from './platform.js?v=6c642f9';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -617,7 +617,8 @@ function renderDatabaseBlock(el, id, page) {
 // database) and its text; a database, its title and its views across the page.
 function mountPage(container, id, place) {
   const note = S.getNote(id), space = note.space, db = note.kind === 'database';
-  container.innerHTML = `<div class="np np-${place} ${db ? 'np-db' : ''}">
+  // (a database in full screen hides its icon and title: see focusedDb in views.js)
+  container.innerHTML = `<div class="np np-${place} ${db ? 'np-db' : ''} ${db && focusedDb(id) ? 'np-focus' : ''}">
     <div class="np-bar"><div class="np-crumbs"></div><div class="np-acts"></div></div>
     <div class="np-scroll"><div class="np-doc">
       <div class="np-icon-row"></div>

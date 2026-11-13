@@ -1,4 +1,4 @@
-import { invoke } from './platform.js?v=2b9be23';
+import { invoke } from './platform.js?v=6c642f9';
 
 export function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -121,6 +121,7 @@ export const icons = {
   peekSide: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M13 4v16"/>',
   peekCenter: '<rect x="3" y="4" width="18" height="16" rx="2"/><rect x="7.5" y="8" width="9" height="8" rx="1"/>',
   expand: '<path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/>',
+  shrink: '<path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/>',
   pin: '<path d="M9 4h6M10 4v5l-3 4h10l-3-4V4M12 13v7"/>',
   table: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M3 15h18M9 10v10"/>',
   board: '<rect x="3" y="4" width="5" height="14" rx="1.5"/><rect x="10" y="4" width="5" height="9" rx="1.5"/><rect x="17" y="4" width="4" height="11" rx="1.5"/>',

@@ -3,13 +3,13 @@
 // cards dragged between them) or a canvas (cards put anywhere, see canvas.js). Also the properties
 // block of an item's page, which shares the value editors with the table.
 // A Branch property links a note to a branch of one of the space's repositories (notes as tasks).
-import * as S from './notes-store.js?v=2b9be23';
-import * as G from './git.js?v=2b9be23';
-import { esc, icon, folderName } from './util.js?v=2b9be23';
-import { desktop } from './platform.js?v=2b9be23';
-import { localPath, sharedPath } from './projects.js?v=2b9be23';
-import { pickEmoji } from './emoji.js?v=2b9be23';
-import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=2b9be23';
+import * as S from './notes-store.js?v=6c642f9';
+import * as G from './git.js?v=6c642f9';
+import { esc, icon, folderName, store } from './util.js?v=6c642f9';
+import { desktop } from './platform.js?v=6c642f9';
+import { localPath, sharedPath } from './projects.js?v=6c642f9';
+import { pickEmoji } from './emoji.js?v=6c642f9';
+import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=6c642f9';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -528,6 +528,18 @@ export function repaintViews() {
   for (const b of blocks) if (b.el.isConnected) paintProps(b); else blocks.delete(b);
 }
 
+// A database opened on its own can hide its icon and title ("full screen"), so its views take the
+// page: per database, on this device (the page gets `np-focus`).
+export const focusedDb = id => !!store('dbFocus')?.[id];
+function toggleFocus(c) {
+  const on = !focusedDb(c.parent), all = { ...store('dbFocus') };
+  if (on) all[c.parent] = true;
+  else delete all[c.parent];
+  store('dbFocus', all);
+  c.el.closest('.np')?.classList.toggle('np-focus', on);
+  paint(c); // (a canvas fits the room it has now)
+}
+
 // The parts of a collection that scroll on their own.
 const SCROLLERS = ['.cv-tabs', '.bd', '.vt-wrap'];
 
@@ -548,6 +560,7 @@ function paint(c) {
       <div class="cv-tabs">${col.views.map(v => `<button class="cv-tab ${v === view ? 'on' : ''}" data-view="${v.id}">${icon(v.icon || VIEWS[v.type][1])}<span>${esc(v.name)}</span></button>`).join('')}
         <button class="cv-btn" data-cv="add-view" title="Add a view">${icon('plus')}</button></div>
       <span class="spacer"></span>
+      ${c.ctx === 'page' ? `<button class="cv-btn" data-cv="focus" title="${focusedDb(c.parent) ? 'Show the title again' : 'Full screen: hide the icon and the title, so the views take the page'}">${icon(focusedDb(c.parent) ? 'shrink' : 'expand')}</button>` : ''}
       <button class="cv-btn" data-cv="view-menu" title="View options">${icon('more')}</button>
       <button class="btn-sm" data-cv="new">${icon('plus')}New</button>
     </div>
@@ -898,6 +911,7 @@ function bindCollection(c) {
       }
       case 'add-view': return host.showMenu(r.left, r.bottom + 4, Object.entries(VIEWS).map(([t, [name]]) => ({ label: `${name} view`, run: () => addView(key, t) })));
       case 'view-menu': return viewMenu(r.right - 220, r.bottom + 4, key, c);
+      case 'focus': return toggleFocus(c);
       case 'new':
         if (view.type === 'table') return newRow(c);
         if (view.type === 'board') { const g = groupProp(col, view); return c.create(g?.options[0] ? { [g.id]: g.options[0].id } : {}); }
