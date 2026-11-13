@@ -3,9 +3,9 @@
 // versions are read from git (`git_bytes`) or from the LFS objects, and the working copy through
 // the asset protocol. Two versions of an image can also be compared by swiping between them or
 // fading one into the other.
-import * as G from './git.js?v=7f128e1';
-import { esc, fmtSize, fmtDuration, store, IMAGE, VIDEO, AUDIO, FONT, extOf } from './util.js?v=7f128e1';
-import { invoke, convertFileSrc } from './platform.js?v=7f128e1';
+import * as G from './git.js?v=e5ab480';
+import { esc, fmtSize, fmtDuration, store, IMAGE, VIDEO, AUDIO, FONT, extOf } from './util.js?v=e5ab480';
+import { invoke, convertFileSrc } from './platform.js?v=e5ab480';
 
 const MIME = {
   png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', jfif: 'image/jpeg', gif: 'image/gif', webp: 'image/webp',

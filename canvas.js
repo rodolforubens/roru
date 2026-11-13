@@ -9,8 +9,8 @@
 // is written with the database like the other views. Items come onto the canvas by themselves (in a
 // free spot below what is there) unless they were hidden from it (`off`); removing an item's last
 // copy hides it. Where the canvas is looked at (moved and zoomed) is kept on this device only.
-import * as S from './notes-store.js?v=7f128e1';
-import { esc, icon, store } from './util.js?v=7f128e1';
+import * as S from './notes-store.js?v=e5ab480';
+import { esc, icon, store, glider } from './util.js?v=e5ab480';
 
 const newId = () => crypto.randomUUID?.() ?? Date.now().toString(36) + Math.random().toString(36).slice(2);
 const clone = v => JSON.parse(JSON.stringify(v ?? null));
@@ -110,6 +110,7 @@ function scrollParent(el) {
 function stateOf(c, view) {
   if (c.canvas?.view !== view.id) {
     c.canvas?.ro?.disconnect();
+    c.canvas?.glide?.stop();
     c.canvas = { view: view.id, cam: camOf(view.id), sel: new Set(), edge: null, undo: [], redo: [], busy: false, active: false, tap: null, cycle: {}, trayQ: '', fresh: null, drop: 0 };
   }
   return c.canvas;
@@ -123,7 +124,7 @@ export function canvasMenuItems(c, key, view, host) {
     { label: 'New items look like…', run: r => host.showMenu(r.right + 2, r.top, LOOKS.map(s => ({ label: `${SHAPES[s]}${look === s ? '  ✓' : ''}`, run: () => S.updateView(key, view.id, { look: s }) }))) },
     { label: `Snap to the grid${view.snap ? '  ✓' : ''}`, run: () => S.updateView(key, view.id, { snap: view.snap ? null : true }) },
     ...(api ? [
-      { label: 'Fit to content', run: () => api.fit() },
+      { label: 'Fit to content', run: () => api.fit({ smooth: true }) },
       { label: store('canvasTray') ? 'Hide the items tray' : 'Show the items tray', run: () => api.toggleTray() },
     ] : []),
   ];
@@ -218,13 +219,33 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
     saveCam(viewId, cv.cam);
   }
 
-  function zoomAt(z, sx, sy) {
+  // The camera glides to where the zoom buttons, the wheel's notches, Fit or the tray send it
+  // (the glide lives on in the canvas's state, drawn by its latest mount); fingers and drags move it
+  // at once.
+  cv.drawCam = applyCam;
+  cv.glide ||= glider(() => cv.cam, cam => { cv.cam = cam; cv.drawCam(); });
+  const moveCam = (cam, smooth) => {
+    if (smooth) return cv.glide.to(cam);
+    cv.glide.stop();
+    cv.cam = cam;
+    applyCam();
+  };
+  const panBy = (dx, dy) => {
+    cv.cam.x += dx;
+    cv.cam.y += dy;
+    cv.glide.nudge({ x: dx, y: dy });
+    applyCam();
+  };
+  // the zoom it is going to (while it glides)
+  const zoomGoal = () => (cv.glide.goal || cv.cam).z;
+
+  // zooms to `z` keeping the point (sx, sy) of the canvas where it is
+  function zoomAt(z, sx, sy, { smooth = false } = {}) {
     z = clampZ(z);
     const wx = (sx - cv.cam.x) / cv.cam.z, wy = (sy - cv.cam.y) / cv.cam.z;
-    cv.cam = { z, x: sx - wx * z, y: sy - wy * z };
-    applyCam();
+    moveCam({ z, x: sx - wx * z, y: sy - wy * z }, smooth);
   }
-  const zoomBy = f => { const r = rect(); zoomAt(cv.cam.z * f, r.width / 2, r.height / 2); };
+  const zoomBy = f => { const r = rect(); zoomAt(zoomGoal() * f, r.width / 2, r.height / 2, { smooth: true }); };
 
   function bounds(rects, pad = 0) {
     if (!rects.length) return null;
@@ -234,25 +255,20 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
   }
 
   // everything in view (at most at 100%), below the tools
-  function fit() {
+  function fit({ smooth = false } = {}) {
     const r = rect();
     if (r.width < 10) return (cv.needFit = true);
     cv.needFit = false;
     const b = bounds([...geo.values()]);
-    if (!b) cv.cam = { x: 40, y: 64, z: 1 };
-    else {
-      const z = clampZ(Math.min(1, (r.width - 80) / b.w, (r.height - 120) / b.h));
-      cv.cam = { z, x: (r.width - b.w * z) / 2 - b.x * z, y: 52 + (r.height - 52 - b.h * z) / 2 - b.y * z };
-    }
-    applyCam();
+    if (!b) return moveCam({ x: 40, y: 64, z: 1 }, smooth);
+    const z = clampZ(Math.min(1, (r.width - 80) / b.w, (r.height - 120) / b.h));
+    moveCam({ z, x: (r.width - b.w * z) / 2 - b.x * z, y: 52 + (r.height - 52 - b.h * z) / 2 - b.y * z }, smooth);
   }
 
   // centers a node, keeping the zoom
   function reveal(id) {
-    const g = geo.get(id), r = rect();
-    if (!g) return;
-    cv.cam = { ...cv.cam, x: r.width / 2 - (g.x + g.w / 2) * cv.cam.z, y: r.height / 2 - (g.y + g.h / 2) * cv.cam.z };
-    applyCam();
+    const g = geo.get(id), r = rect(), z = zoomGoal();
+    if (g) moveCam({ z, x: r.width / 2 - (g.x + g.w / 2) * z, y: r.height / 2 - (g.y + g.h / 2) * z }, true);
   }
 
   // ---------- arrows ----------
@@ -678,6 +694,7 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
       if (touches.size < 2) return;
       [a, b] = two();
       const r = rect(), nx = (a.x + b.x) / 2, ny = (a.y + b.y) / 2;
+      cv.glide.stop();
       cv.cam.x += nx - mx;
       cv.cam.y += ny - my;
       mx = nx;
@@ -700,7 +717,7 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
   function pan(e, { tap = false } = {}) {
     root.classList.add('grabbing');
     track(e, {
-      move: (ev, dx, dy) => { cv.cam.x += dx; cv.cam.y += dy; applyCam(); },
+      move: (ev, dx, dy) => panBy(dx, dy),
       up: (ev, moved, cancelled) => {
         root.classList.remove('grabbing');
         if (moved || cancelled || !tap) return;
@@ -947,11 +964,14 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
     e.preventDefault();
     e.stopPropagation();
     const r = rect();
-    if (e.ctrlKey || e.metaKey) return zoomAt(cv.cam.z * Math.exp(-Math.max(-50, Math.min(50, e.deltaY)) * 0.01), e.clientX - r.left, e.clientY - r.top);
+    if (e.ctrlKey || e.metaKey) {
+      // a mouse wheel's notches glide; a touchpad's pinch (small steps, many of them) follows the fingers
+      const notch = e.deltaMode !== 0 || Math.abs(e.deltaY) >= 40;
+      const f = Math.exp(-Math.max(-50, Math.min(50, e.deltaY)) * 0.01);
+      return zoomAt((notch ? zoomGoal() : cv.cam.z) * f, e.clientX - r.left, e.clientY - r.top, { smooth: notch });
+    }
     const k = e.deltaMode === 1 ? 16 : 1;
-    cv.cam.x -= (e.shiftKey ? e.deltaY : e.deltaX) * k;
-    cv.cam.y -= (e.shiftKey ? 0 : e.deltaY) * k;
-    applyCam();
+    panBy(-(e.shiftKey ? e.deltaY : e.deltaX) * k, -(e.shiftKey ? 0 : e.deltaY) * k);
   }, { passive: false });
 
   root.addEventListener('click', e => {
@@ -970,8 +990,8 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
       case 'tray': return toggleTray();
       case 'zoom-in': return zoomBy(1.25);
       case 'zoom-out': return zoomBy(0.8);
-      case 'zoom-reset': { const rr = rect(); return zoomAt(1, rr.width / 2, rr.height / 2); }
-      case 'fit': return fit();
+      case 'zoom-reset': { const rr = rect(); return zoomAt(1, rr.width / 2, rr.height / 2, { smooth: true }); }
+      case 'fit': return fit({ smooth: true });
       case 'snap': return S.updateView(key, viewId, { snap: V().snap ? null : true });
       case 'toggle': {
         const id = row.dataset.item;

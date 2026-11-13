@@ -1,9 +1,10 @@
 // The images of a note seen bigger, over the whole window: fit to it at first, zoomed with the
-// wheel, a touchpad pinch or two fingers (around where they point), +/−/0 or the buttons, moved by
+// wheel, a touchpad pinch or two fingers (around where they point), +/−/0 or the buttons (gliding
+// from one zoom to the next, but for fingers and touchpads, which it follows), moved by
 // dragging, and the note's other images one arrow away (← → on the keyboard). Ctrl+C, the copy
 // button or the context menu copies the image. Escape, the close button or a click outside the
 // image closes it.
-import { icon } from './util.js?v=7f128e1';
+import { icon, glider } from './util.js?v=e5ab480';
 
 const MAX = 16;
 
@@ -41,34 +42,44 @@ export function openImageViewer(list, index = 0) {
   const fit = () => (w && h ? Math.min(1, stage.clientWidth / w, stage.clientHeight / h) : 1);
   const minScale = () => Math.min(fit(), 1) / 2;
 
-  // keeps the image in view: centered along a side it doesn't fill, else with no gap at its edges
-  const clamp = () => {
-    const sw = stage.clientWidth, sh = stage.clientHeight, iw = w * scale, ih = h * scale;
-    x = iw <= sw ? (sw - iw) / 2 : Math.min(0, Math.max(sw - iw, x));
-    y = ih <= sh ? (sh - ih) / 2 : Math.min(0, Math.max(sh - ih, y));
+  // where the image at `s` stays in view: centered along a side it doesn't fill, else with no gap
+  // at its edges
+  const held = (s, px, py) => {
+    const sw = stage.clientWidth, sh = stage.clientHeight, iw = w * s, ih = h * s;
+    return {
+      x: iw <= sw ? (sw - iw) / 2 : Math.min(0, Math.max(sw - iw, px)),
+      y: ih <= sh ? (sh - ih) / 2 : Math.min(0, Math.max(sh - ih, py)),
+    };
   };
-  const paint = () => {
-    clamp();
+  // (a glide goes between two places in view, so its frames aren't held)
+  const paint = (hold = true) => {
+    if (hold) ({ x, y } = held(scale, x, y));
     img.style.width = `${w}px`;
     img.style.height = `${h}px`;
     img.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
     zoomLabel.textContent = `${Math.round(scale * 100)}%`;
     el.classList.toggle('iv-pannable', w * scale > stage.clientWidth + 1 || h * scale > stage.clientHeight + 1);
   };
-  const toFit = () => {
-    fitted = true;
-    scale = fit();
-    x = y = 0;
+  const glide = glider(() => ({ scale, x, y }), (v, last) => { ({ scale, x, y } = v); paint(last); });
+  const goTo = (s, gx, gy, smooth) => {
+    const at = held(s, gx, gy);
+    if (smooth) return glide.to({ scale: s, ...at });
+    glide.stop();
+    scale = s;
+    ({ x, y } = at);
     paint();
   };
+  // the zoom it is going to (while it glides)
+  const target = () => glide.goal?.scale ?? scale;
+  const toFit = (smooth = false) => {
+    fitted = true;
+    goTo(fit(), 0, 0, smooth);
+  };
   // zooms to `next`, keeping the point (px, py) of the stage where it is
-  const zoomTo = (next, px = stage.clientWidth / 2, py = stage.clientHeight / 2) => {
+  const zoomTo = (next, px = stage.clientWidth / 2, py = stage.clientHeight / 2, smooth = true) => {
     next = Math.max(minScale(), Math.min(MAX, next));
-    x = px - (px - x) * (next / scale);
-    y = py - (py - y) * (next / scale);
-    scale = next;
     fitted = false;
-    paint();
+    goTo(next, px - (px - x) * (next / scale), py - (py - y) * (next / scale), smooth);
   };
   const show = n => {
     i = (n + list.length) % list.length;
@@ -115,9 +126,9 @@ export function openImageViewer(list, index = 0) {
     if (what === 'close') close();
     else if (what === 'prev') show(i - 1);
     else if (what === 'next') show(i + 1);
-    else if (what === 'in') zoomTo(scale * 1.5);
-    else if (what === 'out') zoomTo(scale / 1.5);
-    else if (what === 'fit') toFit();
+    else if (what === 'in') zoomTo(target() * 1.5);
+    else if (what === 'out') zoomTo(target() / 1.5);
+    else if (what === 'fit') toFit(true);
     else if (what === 'copy') copy();
     else if (what === 'actual') zoomTo(1);
   };
@@ -171,13 +182,15 @@ export function openImageViewer(list, index = 0) {
     if (!w || e.target.closest('.iv-bar')) return;
     const r = stage.getBoundingClientRect();
     const step = Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015));
-    zoomTo(scale * step, e.clientX - r.left, e.clientY - r.top);
+    // a mouse wheel's notches glide; a touchpad (small steps, many of them) is followed
+    const notch = e.deltaMode !== 0 || Math.abs(e.deltaY) >= 40;
+    zoomTo((notch ? target() : scale) * step, e.clientX - r.left, e.clientY - r.top, notch);
   }, { passive: false });
 
   img.addEventListener('dblclick', e => {
     const r = stage.getBoundingClientRect();
     if (fitted || scale <= fit() + 0.001) zoomTo(Math.max(1, fit() * 2), e.clientX - r.left, e.clientY - r.top);
-    else toFit();
+    else toFit(true);
   });
 
   // dragging moves the image; two fingers zoom it (and move it with them)
@@ -185,6 +198,7 @@ export function openImageViewer(list, index = 0) {
   let moved = false, onImage = false, pinch = null;
   stage.addEventListener('pointerdown', e => {
     if (e.button !== 0 && e.pointerType === 'mouse') return;
+    glide.stop();
     stage.setPointerCapture(e.pointerId);
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     moved = false;
@@ -209,7 +223,7 @@ export function openImageViewer(list, index = 0) {
       y += my - pinch.my;
       pinch.mx = mx;
       pinch.my = my;
-      zoomTo(pinch.scale * (Math.hypot(a.x - b.x, a.y - b.y) / pinch.d), mx - r.left, my - r.top);
+      zoomTo(pinch.scale * (Math.hypot(a.x - b.x, a.y - b.y) / pinch.d), mx - r.left, my - r.top, false);
     } else if (pointers.size === 1) {
       x += dx;
       y += dy;

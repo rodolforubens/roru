@@ -1,4 +1,4 @@
-import { invoke } from './platform.js?v=7f128e1';
+import { invoke } from './platform.js?v=e5ab480';
 
 export function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -59,6 +59,54 @@ export const plural = (n, word, words = word + 's') => `${n} ${n === 1 ? word : 
 export function debounce(fn, ms) {
   let t;
   return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
+}
+
+// Glides some numbers (a zoom and where it looks) to new values in `ms`, slowing down at the end,
+// instead of jumping there: `put(values, last)` draws them every frame. Another `to()` while it
+// glides goes on from where the numbers are, and `nudge()` moves both ends (a pan during a zoom).
+// With "reduce motion" on in the system they jump; a page that gets no frames (out of sight) gets
+// the end a moment later.
+export function glider(get, put, ms = 180) {
+  let from = null, goal = null, start = 0, frame = 0, late = 0;
+  const finish = () => {
+    const end = goal;
+    halt();
+    if (end) put(end, true);
+  };
+  const halt = () => {
+    cancelAnimationFrame(frame);
+    clearTimeout(late);
+    frame = late = 0;
+    goal = null;
+  };
+  const step = now => {
+    frame = 0;
+    const t = Math.max(0, Math.min(1, (now - start) / ms));
+    if (t >= 1) return finish();
+    const e = 1 - (1 - t) ** 3, v = {};
+    for (const k in goal) v[k] = from[k] + (goal[k] - from[k]) * e;
+    put(v, false);
+    frame = requestAnimationFrame(step);
+  };
+  return {
+    to(next) {
+      if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        halt();
+        return put(next, true);
+      }
+      from = { ...get() };
+      goal = next;
+      start = performance.now();
+      frame ||= requestAnimationFrame(step);
+      clearTimeout(late);
+      late = setTimeout(finish, ms + 120);
+    },
+    nudge(d) {
+      if (goal) for (const k in d) { from[k] += d[k]; goal[k] += d[k]; }
+    },
+    stop: halt,
+    get goal() { return goal; },
+  };
 }
 
 export function store(key, value) {

@@ -1,7 +1,8 @@
 // Whole-UI zoom, Notion/Claude style:
 //   Ctrl + =  /  Ctrl + -  /  Ctrl + 0  and  Ctrl + mouse wheel (or touchpad pinch).
-// Uses the native WebView zoom (like Electron's setZoomFactor), falling back to CSS zoom.
-import { store } from './util.js?v=7f128e1';
+// Uses the native WebView zoom (like Electron's setZoomFactor), falling back to CSS zoom, and
+// glides from one level to the next instead of jumping.
+import { store, glider } from './util.js?v=e5ab480';
 
 export const STEPS = [0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3];
 
@@ -21,12 +22,24 @@ async function apply(z) {
   }
 }
 
+// The zoom drawn now (between two levels while it glides). The webview's zoom is set through the
+// backend, so a frame waits for the one before it to be set, and the last one is always set.
+let shown = level, sending = null, waiting = null;
+function send(z) {
+  if (sending) return void (waiting = z);
+  sending = apply(z).finally(() => {
+    sending = null;
+    if (waiting != null) { const next = waiting; waiting = null; send(next); }
+  });
+}
+const glide = glider(() => ({ z: shown }), ({ z }) => { shown = z; send(z); });
+
 export function getZoom() { return level; }
 
-export async function setZoom(z, { toast = true } = {}) {
+export function setZoom(z, { toast = true } = {}) {
   level = clamp(Math.round(z * 100) / 100);
   store('zoom', level);
-  await apply(level);
+  glide.to({ z: level });
   listeners.forEach(fn => fn(level));
   if (toast) showToast();
 }
