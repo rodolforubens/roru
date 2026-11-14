@@ -3,13 +3,13 @@
 // cards dragged between them) or a canvas (cards put anywhere, see canvas.js). Also the properties
 // block of an item's page, which shares the value editors with the table.
 // A Branch property links a note to a branch of one of the space's repositories (notes as tasks).
-import * as S from './notes-store.js?v=262b7c4';
-import * as G from './git.js?v=262b7c4';
-import { esc, icon, folderName, store } from './util.js?v=262b7c4';
-import { desktop } from './platform.js?v=262b7c4';
-import { localPath, sharedPath } from './projects.js?v=262b7c4';
-import { pickEmoji } from './emoji.js?v=262b7c4';
-import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=262b7c4';
+import * as S from './notes-store.js?v=0cb2e23';
+import * as G from './git.js?v=0cb2e23';
+import { esc, icon, folderName, store } from './util.js?v=0cb2e23';
+import { desktop } from './platform.js?v=0cb2e23';
+import { localPath, sharedPath } from './projects.js?v=0cb2e23';
+import { pickEmoji } from './emoji.js?v=0cb2e23';
+import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=0cb2e23';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -27,6 +27,13 @@ export function initViews(h) {
   addEventListener('keydown', e => {
     if (e.defaultPrevented || $('#modal-root').childElementCount || !$('#menu').hidden || picker) return;
     const f = [...mounted].find(x => x.focused && x.el.isConnected);
+    // F11 puts a view in focus mode and takes it out (in the desktop app: in a browser, F11 is its
+    // own full screen)
+    if (e.key === 'F11' && desktop && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) {
+      const c = f || focusTarget();
+      if (c) { e.preventDefault(); setFocused(c, !f); }
+      return;
+    }
     if (e.target.closest?.('input, textarea, [contenteditable="true"]')) {
       // (the text of the page behind a view in focus mode, which a click in the view can focus, is not
       // being typed)
@@ -38,7 +45,6 @@ export function initViews(h) {
     if (c && e.key === 'Delete') { e.preventDefault(); return host.deleteNotes(selection(c)); }
     if (f && e.key === 'Escape' && $('#peek').hidden) { e.preventDefault(); setFocused(f, false); }
   });
-  addEventListener('resize', placeFocus);
 }
 
 export const TYPES = {
@@ -530,6 +536,7 @@ export function renderCollection(el, opts) {
     c = { el, sel: new Set() };
     mounted.add(c);
     bindCollection(c);
+    el.addEventListener('pointerdown', () => { lastView = c; }, true); // (see focusTarget)
   }
   Object.assign(c, opts);
   // in focus mode, the items open as the database says for it (Ctrl+click: a new tab, as always)
@@ -537,9 +544,10 @@ export function renderCollection(el, opts) {
   paint(c);
 }
 
-// Focus mode: a view takes the whole window but the tab bar (`cv-focus`), until Escape or its
-// button; not kept. Its items open in a peek, the database's choice for it (`focusOpen`: 'side' or
-// 'center', the default).
+// Focus mode: a view takes the whole window, the tab bar included (`cv-focus`; the window's own
+// buttons stay, and the empty part of the view's bar moves the window), until Escape, F11 (in the
+// desktop app) or its button; not kept. Its items open in a peek, the database's choice for it
+// (`focusOpen`: 'side' or 'center', the default).
 const FOCUS_OPEN = { center: 'Center peek', side: 'Side peek' };
 const focusOpenOf = id => S.getNote(id)?.focusOpen || 'center';
 
@@ -550,13 +558,22 @@ function setFocused(c, on) {
   paint(c); // (its button changes, and a canvas fits the room it has now)
 }
 
-// Where the focus mode starts: under the tab bar (none on a phone), whose side the rail is on is
-// covered too.
+// The room the window's buttons (minimize, maximize, close) take at the end of the view's bar.
 function placeFocus() {
-  const top = document.getElementById('titlebar')?.getBoundingClientRect().bottom || 0;
-  const rail = document.getElementById('rail')?.getBoundingClientRect().right || 0;
-  document.documentElement.style.setProperty('--focus-top', `${top}px`);
-  document.documentElement.style.setProperty('--focus-rail', `${top ? rail : 0}px`);
+  const ctl = document.getElementById('winctl')?.getBoundingClientRect().width || 0;
+  document.documentElement.style.setProperty('--focus-ctl', `${ctl}px`);
+}
+
+// The view F11 puts in focus mode: the one under the pointer, or clicked last, else the one of the
+// database open on its own in front (a peek over the tab), else the first one shown there.
+let lastView = null;
+function focusTarget() {
+  const shown = [...mounted].filter(x => x.el.isConnected && x.el.getClientRects().length);
+  const front = $('#peek:not([hidden])') || $('#main');
+  const inFront = shown.filter(x => front?.contains(x.el));
+  const onScreen = x => { const r = x.el.getBoundingClientRect(); return r.bottom > 0 && r.top < innerHeight; };
+  return shown.find(x => x.el.matches(':hover')) || inFront.find(x => x === lastView) || inFront.find(x => x.ctx === 'page')
+    || inFront.find(onScreen) || shown.find(x => x === lastView) || null;
 }
 
 // After notes or collections changed; the ones being typed in wait until the typing ends.
@@ -592,12 +609,13 @@ function paint(c) {
   // a canvas keeps the keys when it is drawn again
   const focused = !!$('.cvs', c.el)?.contains(document.activeElement);
   c.view = view.id;
+  const drag = c.focused ? 'data-tauri-drag-region' : '';
   c.el.innerHTML = `<div class="cv cv-${c.ctx}">
-    <div class="cv-bar">
-      <div class="cv-tabs">${col.views.map(v => `<button class="cv-tab ${v === view ? 'on' : ''}" data-view="${v.id}">${icon(v.icon || VIEWS[v.type][1])}<span>${esc(v.name)}</span></button>`).join('')}
+    <div class="cv-bar" ${drag}>
+      <div class="cv-tabs" ${drag}>${col.views.map(v => `<button class="cv-tab ${v === view ? 'on' : ''}" data-view="${v.id}">${icon(v.icon || VIEWS[v.type][1])}<span>${esc(v.name)}</span></button>`).join('')}
         <button class="cv-btn" data-cv="add-view" title="Add a view">${icon('plus')}</button></div>
-      <span class="spacer"></span>
-      <button class="cv-btn" data-cv="focus-mode" title="${c.focused ? 'Leave the focus mode (Esc)' : 'Focus mode: the view takes the whole window'}">${icon(c.focused ? 'unfocus' : 'focus')}</button>
+      <span class="spacer" ${drag}></span>
+      <button class="cv-btn" data-cv="focus-mode" title="${c.focused ? `Leave the focus mode (Esc${desktop ? ' or F11' : ''})` : `Focus mode: the view takes the whole window${desktop ? ' (F11)' : ''}`}">${icon(c.focused ? 'unfocus' : 'focus')}</button>
       ${c.ctx === 'page' && !c.focused ? `<button class="cv-btn" data-cv="focus" title="${focusedDb(c.parent) ? 'Show the title again' : 'Full screen: hide the icon and the title, so the views take the page'}">${icon(focusedDb(c.parent) ? 'shrink' : 'expand')}</button>` : ''}
       <button class="cv-btn" data-cv="view-menu" title="View options">${icon('more')}</button>
       <button class="btn-sm" data-cv="new">${icon('plus')}New</button>
@@ -933,7 +951,7 @@ function viewMenu(x, y, key, c) {
       { label: 'Open items in', items: () => host.openInMenu(key) },
       { label: 'Open items in focus mode', items: () => Object.entries(FOCUS_OPEN).map(([m, name]) => ({ label: `${name}${focusOpenOf(key) === m ? '  ✓' : ''}`, run: () => S.setFocusOpen(key, m) })) },
     ] : []),
-    { label: c.focused ? 'Leave the focus mode  (Esc)' : 'Focus mode', run: () => setFocused(c, !c.focused) },
+    { label: c.focused ? 'Leave the focus mode  (Esc)' : `Focus mode${desktop ? '  (F11)' : ''}`, run: () => setFocused(c, !c.focused) },
     ...(view.type === 'board' && view.pinned?.length ? [{ label: 'Unpin all groups', run: () => S.updateView(key, view.id, { pinned: null }) }] : []),
     // a database in a page's text can take the page's whole width (the text keeps its column)
     ...(ctx === 'inline' && page ? [{ label: `Full-width databases on this page${S.wideViewsOf(page.id) ? '  ✓' : ''}`, run: () => S.setWideViews(page.id, !S.wideViewsOf(page.id)) }] : []),

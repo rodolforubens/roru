@@ -1409,20 +1409,20 @@ body.note-page .git-side, body.note-page .ex-side, body:not(.note-page) .note-si
 .cv-bar .btn-sm { display: inline-flex; align-items: center; gap: 5px; margin: 0; }
 .cv-empty { padding: 10px 6px; color: var(--text-3); font-size: 13px; }
 
-/* focus mode: a view takes the whole window but the tab bar (see setFocused in views.js). The
+/* focus mode: a view takes the whole window, the tab bar included (see setFocused in views.js). The
    scrollers of the pages and dashboards stop being containers while one does, or it would stay
-   inside them; a side peek opens over it. */
+   inside them; a side peek opens over it. The window's buttons stay in their corner, at the end of
+   the view's bar (macOS draws its own at its start). */
 .cv-focus {
-  position: fixed !important; z-index: 25; top: var(--focus-top, 0); right: 0; bottom: 0; left: 0;
-  display: flex; flex-direction: column; width: auto !important; margin: 0 !important; padding: 10px 18px 0;
+  position: fixed !important; z-index: 25; inset: 0;
+  display: flex; flex-direction: column; width: auto !important; margin: 0 !important; padding: 5px 18px 0;
   background: var(--bg); cursor: default; animation: fade .12s;
 }
-.cv-focus::before {
-  content: ""; position: fixed; top: 0; left: 0; width: var(--focus-rail, 0); height: var(--focus-top, 0);
-  box-sizing: border-box; border-bottom: 1px solid var(--border); background: var(--bg);
-}
+.cv-focus .cv-bar { min-height: 32px; margin-right: var(--focus-ctl, 0); }
+html.mac .cv-focus .cv-bar { padding-left: 64px; }
+body:has(.cv-focus) #winctl { position: fixed; z-index: 26; top: 0; right: 0; height: 37px; }
 .np-scroll:has(.cv-focus), .dash:has(.cv-focus) { container-type: normal; }
-body:has(.cv-focus) #peek.side:not([hidden]) { position: fixed; top: var(--focus-top, 0); }
+body:has(.cv-focus) #peek.side:not([hidden]) { position: fixed; }
 .cv-focus > .cv { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .cv-focus .cv-body { flex: 1; min-height: 0; overflow: auto; padding-bottom: 14px; }
 .cv-focus .cv-body.cv-canvas { display: flex; flex-direction: column; overflow: hidden; padding-bottom: 18px; }

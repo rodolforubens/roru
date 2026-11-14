@@ -5,17 +5,17 @@
 // below as it was. Pages nest in other pages through their text (a link to the nested page, or a
 // database block); databases show in the tree as one item. Tabs and spaces belong to app.js (see
 // initNotesUi); the table, board and canvas views and the properties are in views.js (and canvas.js).
-import * as S from './notes-store.js?v=262b7c4';
-import * as G from './git.js?v=262b7c4';
-import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=262b7c4';
-import { openImageViewer, copyImage } from './image-viewer.js?v=262b7c4';
-import { pickEmoji } from './emoji.js?v=262b7c4';
-import { toMarkdown } from './markdown.js?v=262b7c4';
-import { sharedPath } from './projects.js?v=262b7c4';
-import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView, focusedDb } from './views.js?v=262b7c4';
-import { importNotion } from './notion-import.js?v=262b7c4';
-import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative } from './util.js?v=262b7c4';
-import { desktop, invoke, isMobile } from './platform.js?v=262b7c4';
+import * as S from './notes-store.js?v=0cb2e23';
+import * as G from './git.js?v=0cb2e23';
+import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=0cb2e23';
+import { openImageViewer, copyImage } from './image-viewer.js?v=0cb2e23';
+import { pickEmoji } from './emoji.js?v=0cb2e23';
+import { toMarkdown } from './markdown.js?v=0cb2e23';
+import { sharedPath } from './projects.js?v=0cb2e23';
+import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView, focusedDb } from './views.js?v=0cb2e23';
+import { importNotion } from './notion-import.js?v=0cb2e23';
+import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative } from './util.js?v=0cb2e23';
+import { desktop, invoke, isMobile } from './platform.js?v=0cb2e23';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
