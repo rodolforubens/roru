@@ -11,8 +11,8 @@
 // copy hides the item. Delete deletes what is selected (items to the trash, after a prompt), and F
 // frames it. The wheel zooms it (Ctrl + wheel moves it, or the other way around), a pinch too.
 // Where the canvas is looked at (moved and zoomed) is kept on this device only.
-import * as S from './notes-store.js?v=b4843c5';
-import { esc, icon, store, glider, plural } from './util.js?v=b4843c5';
+import * as S from './notes-store.js?v=4030c69';
+import { esc, icon, store, glider, plural } from './util.js?v=4030c69';
 
 const newId = () => crypto.randomUUID?.() ?? Date.now().toString(36) + Math.random().toString(36).slice(2);
 const clone = v => JSON.parse(JSON.stringify(v ?? null));
@@ -234,7 +234,7 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
     saveCam(viewId, cv.cam);
   }
 
-  // The camera glides to where the zoom buttons, the wheel's notches, Fit or the tray send it
+  // The camera glides to where the zoom buttons, the wheel (zooming or moving), Fit or the tray send it
   // (the glide lives on in the canvas's state, drawn by its latest mount); fingers and drags move it
   // at once.
   cv.drawCam = applyCam;
@@ -250,6 +250,11 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
     cv.cam.y += dy;
     cv.glide.nudge({ x: dx, y: dy });
     applyCam();
+  };
+  // (gliding, on from where it is going: the wheel's steps)
+  const glideBy = (dx, dy) => {
+    const g = cv.glide.goal || cv.cam;
+    moveCam({ ...g, x: g.x + dx, y: g.y + dy }, true);
   };
   // the zoom it is going to (while it glides)
   const zoomGoal = () => (cv.glide.goal || cv.cam).z;
@@ -1022,7 +1027,10 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
     if (e.deltaX && !e.shiftKey) cv.padAt = e.timeStamp;
     const pad = e.timeStamp - (cv.padAt ?? -1e9) < 300;
     if (!pad && wheelZooms() === !ctrlHeld && !e.shiftKey) return zoomAt(zoomGoal() * zoom(e.deltaY * (e.deltaMode === 1 ? 33 : 1)), ...at, { smooth: true });
-    panBy(-(e.shiftKey ? e.deltaY : e.deltaX) * k, -(e.shiftKey ? 0 : e.deltaY) * k);
+    const dx = -(e.shiftKey ? e.deltaY : e.deltaX) * k, dy = -(e.shiftKey ? 0 : e.deltaY) * k;
+    // the wheel's steps glide; a touchpad's two fingers move it at once
+    if (pad) panBy(dx, dy);
+    else glideBy(dx, dy);
   }, { passive: false });
 
   root.addEventListener('click', e => {
