@@ -5,17 +5,17 @@
 // below as it was. Pages nest in other pages through their text (a link to the nested page, or a
 // database block); databases show in the tree as one item. Tabs and spaces belong to app.js (see
 // initNotesUi); the table, board and canvas views and the properties are in views.js (and canvas.js).
-import * as S from './notes-store.js?v=9255558';
-import * as G from './git.js?v=9255558';
-import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=9255558';
-import { openImageViewer, copyImage } from './image-viewer.js?v=9255558';
-import { pickEmoji } from './emoji.js?v=9255558';
-import { toMarkdown } from './markdown.js?v=9255558';
-import { sharedPath } from './projects.js?v=9255558';
-import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView, focusedDb } from './views.js?v=9255558';
-import { importNotion } from './notion-import.js?v=9255558';
-import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative } from './util.js?v=9255558';
-import { desktop, invoke, isMobile } from './platform.js?v=9255558';
+import * as S from './notes-store.js?v=2abb843';
+import * as G from './git.js?v=2abb843';
+import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=2abb843';
+import { openImageViewer, copyImage } from './image-viewer.js?v=2abb843';
+import { pickEmoji } from './emoji.js?v=2abb843';
+import { toMarkdown } from './markdown.js?v=2abb843';
+import { sharedPath } from './projects.js?v=2abb843';
+import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView, focusedDb } from './views.js?v=2abb843';
+import { importNotion } from './notion-import.js?v=2abb843';
+import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative } from './util.js?v=2abb843';
+import { desktop, invoke, isMobile } from './platform.js?v=2abb843';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -609,7 +609,7 @@ function renderDatabaseBlock(el, id, page) {
     space: db.space, parent: id, ctx: 'inline',
     open: openItem,
     create: (props, open) => newNote({ space: db.space, parent: id, props, open }),
-    createDatabase: (view, props) => newDatabase({ space: db.space, parent: id, view, props, block: false }),
+    createDatabase: (view, props, open) => newDatabase({ space: db.space, parent: id, view, props, open, block: false }),
   });
 }
 
@@ -634,7 +634,7 @@ function mountPage(container, id, place) {
       space, parent: id, ctx: 'page',
       open: openItem,
       create: (props, open) => newNote({ space, parent: id, props, open }),
-      createDatabase: (view, props) => newDatabase({ space, parent: id, view, props, block: false }),
+      createDatabase: (view, props, open) => newDatabase({ space, parent: id, view, props, open, block: false }),
     });
   } else {
     renderProps($('.np-props', el), id);

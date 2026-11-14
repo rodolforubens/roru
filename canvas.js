@@ -10,8 +10,8 @@
 // free spot below what is there) unless they were hidden from it (`off`); hiding an item's last
 // copy hides the item. Delete deletes what is selected (items to the trash, after a prompt), and F
 // frames it. Where the canvas is looked at (moved and zoomed) is kept on this device only.
-import * as S from './notes-store.js?v=9255558';
-import { esc, icon, store, glider, plural } from './util.js?v=9255558';
+import * as S from './notes-store.js?v=2abb843';
+import { esc, icon, store, glider, plural } from './util.js?v=2abb843';
 
 const newId = () => crypto.randomUUID?.() ?? Date.now().toString(36) + Math.random().toString(36).slice(2);
 const clone = v => JSON.parse(JSON.stringify(v ?? null));

@@ -3,13 +3,13 @@
 // cards dragged between them) or a canvas (cards put anywhere, see canvas.js). Also the properties
 // block of an item's page, which shares the value editors with the table.
 // A Branch property links a note to a branch of one of the space's repositories (notes as tasks).
-import * as S from './notes-store.js?v=9255558';
-import * as G from './git.js?v=9255558';
-import { esc, icon, folderName, store } from './util.js?v=9255558';
-import { desktop } from './platform.js?v=9255558';
-import { localPath, sharedPath } from './projects.js?v=9255558';
-import { pickEmoji } from './emoji.js?v=9255558';
-import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=9255558';
+import * as S from './notes-store.js?v=2abb843';
+import * as G from './git.js?v=2abb843';
+import { esc, icon, folderName, store } from './util.js?v=2abb843';
+import { desktop } from './platform.js?v=2abb843';
+import { localPath, sharedPath } from './projects.js?v=2abb843';
+import { pickEmoji } from './emoji.js?v=2abb843';
+import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=2abb843';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -919,13 +919,14 @@ function bindCollection(c) {
         return c.create({});
       case 'new-row': return newRow(c);
       case 'rename-card': return renameCard(btn.closest('.bd-card'), id);
-      case 'new-in': { const g = groupProp(col, view); return c.create(colEl.dataset.group ? { [g.id]: colEl.dataset.group } : {}); }
+      // (a column's buttons make a card that doesn't open: its title is typed on it)
+      case 'new-in': { const g = groupProp(col, view); return typeTitle(c, c.create(colEl.dataset.group ? { [g.id]: colEl.dataset.group } : {}, 'none')); }
       // the "+" of a column's header: a card at the top of the column
       case 'new-top': {
         const g = groupProp(col, view), first = colEl.querySelector('.bd-card')?.dataset.note;
-        const n = c.create(colEl.dataset.group ? { [g.id]: colEl.dataset.group } : {});
+        const n = c.create(colEl.dataset.group ? { [g.id]: colEl.dataset.group } : {}, 'none');
         if (n && first) S.moveNote(n.id, n.parent ?? null, first);
-        return;
+        return typeTitle(c, n);
       }
       case 'add-prop': return addProperty(r.left, r.bottom + 4, key);
       case 'add-status': return S.updateView(key, view.id, { groupBy: addStatus(key).id });
@@ -1105,20 +1106,35 @@ function bindCollection(c) {
 
 // The menu of a "New" button: a page (what a click makes) or a database right in this one (not a
 // page holding one), with a first view of its kind. From a board's column, it goes in the column.
+// Only the bar's "New" opens it, like a click: from a column or the table's last row, its title is
+// typed right there.
 function newMenu(c, btn, x, y) {
   const key = S.collectionKey(c.space, c.parent), col = S.getCollection(key), view = activeView(col);
   const g = view.type === 'board' ? groupProp(col, view) : null;
   const colEl = btn.closest('.bd-col');
   const group = colEl ? colEl.dataset.group || null : btn.dataset.cv === 'new' ? g?.options[0]?.id ?? null : null;
   const props = g && group ? { [g.id]: group } : {};
+  const open = btn.dataset.cv === 'new' ? undefined : 'none';
   // (the "+" of a column's header puts it at the top of the column)
   const top = btn.dataset.cv === 'new-top' ? colEl?.querySelector('.bd-card')?.dataset.note : null;
-  const place = n => { if (n && top) S.moveNote(n.id, n.parent ?? null, top); };
+  const place = n => {
+    if (n && top) S.moveNote(n.id, n.parent ?? null, top);
+    if (open === 'none') typeTitle(c, n);
+  };
   host.showMenu(x, y, [
-    { label: 'New page', run: () => place(c.create(props)) },
+    { label: 'New page', run: () => place(c.create(props, open)) },
     '-',
-    ...['table', 'board', 'list', 'canvas'].map(t => ({ label: `New database: ${VIEWS[t][0].toLowerCase()}`, run: () => place(c.createDatabase?.(t, props)) })),
+    ...['table', 'board', 'list', 'canvas'].map(t => ({ label: `New database: ${VIEWS[t][0].toLowerCase()}`, run: () => place(c.createDatabase?.(t, props, open)) })),
   ]);
+}
+
+// A new item that didn't open: its title is typed on its card or in its row.
+function typeTitle(c, n) {
+  if (!n) return;
+  const card = c.el.querySelector(`.bd-card[data-note="${CSS.escape(n.id)}"]`);
+  if (card) return renameCard(card, n.id);
+  const cell = c.el.querySelector(`tr[data-note="${CSS.escape(n.id)}"] .vt-tt`);
+  if (cell) editTitle(cell, n.id);
 }
 
 // The icon of an item: its own, or a database's or a page's.
@@ -1126,7 +1142,5 @@ const itemIcon = n => n.icon || (n.kind === 'database' ? 'table' : 'note');
 
 // A new row of the table, its title typed right there.
 function newRow(c) {
-  const n = c.create({}, 'none');
-  const cell = c.el.querySelector(`tr[data-note="${CSS.escape(n.id)}"] .vt-tt`);
-  if (cell) editTitle(cell, n.id);
+  typeTitle(c, c.create({}, 'none'));
 }
