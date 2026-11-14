@@ -9,10 +9,10 @@
 // is written with the database like the other views. Items come onto the canvas by themselves (in a
 // free spot below what is there) unless they were hidden from it (`off`); hiding an item's last
 // copy hides the item. Delete deletes what is selected (items to the trash, after a prompt), and F
-// frames it. A mouse's wheel zooms it (Ctrl + wheel moves it), a touchpad's two fingers move it.
+// frames it. The wheel zooms it (Ctrl + wheel moves it, or the other way around), a pinch too.
 // Where the canvas is looked at (moved and zoomed) is kept on this device only.
-import * as S from './notes-store.js?v=821b669';
-import { esc, icon, store, glider, plural } from './util.js?v=821b669';
+import * as S from './notes-store.js?v=b4843c5';
+import { esc, icon, store, glider, plural } from './util.js?v=b4843c5';
 
 const newId = () => crypto.randomUUID?.() ?? Date.now().toString(36) + Math.random().toString(36).slice(2);
 const clone = v => JSON.parse(JSON.stringify(v ?? null));
@@ -83,10 +83,15 @@ function saveCam(id, cam) {
 
 // A canvas in a page's text takes the wheel (and two fingers) only once it was clicked; a click
 // elsewhere lets it go again.
-let bound = false;
+// Whether the Ctrl key is held: a touchpad's pinch comes as a wheel with Ctrl, the key not pressed.
+let bound = false, ctrlHeld = false;
 function bindOnce() {
   if (bound) return;
   bound = true;
+  const ctrl = e => e.key === 'Control' || e.key === 'Meta';
+  addEventListener('keydown', e => { if (ctrl(e)) ctrlHeld = true; }, true);
+  addEventListener('keyup', e => { if (ctrl(e)) ctrlHeld = false; }, true);
+  addEventListener('blur', () => { ctrlHeld = false; });
   addEventListener('pointerdown', e => {
     for (const r of document.querySelectorAll('.cvs.active')) {
       if (r.contains(e.target)) continue;
@@ -125,12 +130,20 @@ export function canvasMenuItems(c, key, view, host) {
   return [
     { label: 'New items look like', items: () => LOOKS.map(s => ({ label: `${SHAPES[s]}${look === s ? '  ✓' : ''}`, run: () => S.updateView(key, view.id, { look: s }) })) },
     { label: `Snap to the grid${view.snap ? '  ✓' : ''}`, run: () => S.updateView(key, view.id, { snap: view.snap ? null : true }) },
+    // (on this device: with a touchpad, two fingers may better move the canvas)
+    { label: 'The wheel', items: () => [
+      { label: `Zooms  (Ctrl + wheel moves)${wheelZooms() ? '  ✓' : ''}`, run: () => store('canvasWheel', null) },
+      { label: `Moves  (Ctrl + wheel zooms)${wheelZooms() ? '' : '  ✓'}`, run: () => store('canvasWheel', 'move') },
+    ] },
     ...(api ? [
       { label: 'Fit to content', run: () => api.fit({ smooth: true }) },
       { label: store('canvasTray') ? 'Hide the items tray' : 'Show the items tray', run: () => api.toggleTray() },
     ] : []),
   ];
 }
+
+// What the wheel does on the canvases of this device: zoom (Ctrl + wheel moves them), or move them.
+const wheelZooms = () => store('canvasWheel') !== 'move';
 
 // The "New" of the view's bar: an item in the middle of the canvas.
 export const canvasNew = c => c.canvas?.api?.newItem();
@@ -968,8 +981,9 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
     boxSelect(e);
   });
 
-  // A mouse's wheel zooms the canvas (not the UI), and with Ctrl it moves it up and down (Shift:
-  // sideways); a touchpad keeps its gestures: two fingers move it, a pinch zooms it.
+  // The wheel zooms the canvas (not the UI), gliding, and with Ctrl it moves it up and down (Shift:
+  // sideways), or the other way around ("The wheel" in the view menu, on each device); a touchpad's
+  // pinch zooms it, following the fingers, and its two fingers move it when they go sideways.
   // Pictures pasted (where the pointer is, or else in the middle) or dropped become items.
   root.addEventListener('pointermove', e => { cv.pointer = { x: e.clientX, y: e.clientY }; });
   root.addEventListener('pointerleave', () => { cv.pointer = null; });
@@ -999,26 +1013,17 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
     if (e.target.closest('.cvs-tray')) return;
     e.preventDefault();
     e.stopPropagation();
-    const r = rect(), k = e.deltaMode === 1 ? 16 : 1, ctrl = e.ctrlKey || e.metaKey, mouse = fromMouse(e);
-    // (a touchpad's pinch comes as a wheel with Ctrl)
-    if (mouse ? !ctrl && !e.shiftKey : ctrl) {
-      // a mouse wheel's notches glide; a touchpad's pinch (small steps, many of them) follows the fingers
-      const d = e.deltaY * (e.deltaMode === 1 ? 33 : 1);
-      const f = Math.exp(-Math.max(-50, Math.min(50, d)) * 0.01);
-      return zoomAt((mouse ? zoomGoal() : cv.cam.z) * f, e.clientX - r.left, e.clientY - r.top, { smooth: mouse });
-    }
-    if (mouse) return e.shiftKey ? panBy(-e.deltaY * k, 0) : panBy(0, -e.deltaY * k);
+    const r = rect(), k = e.deltaMode === 1 ? 16 : 1, at = [e.clientX - r.left, e.clientY - r.top];
+    const zoom = f => Math.exp(-Math.max(-50, Math.min(50, f)) * 0.01);
+    if (!e.ctrlKey && !e.metaKey) ctrlHeld = false;
+    // a pinch: it follows the fingers
+    if ((e.ctrlKey || e.metaKey) && !ctrlHeld) return zoomAt(cv.cam.z * zoom(e.deltaY), ...at);
+    // (two fingers going sideways: a touchpad, which moves the canvas while the gesture goes on)
+    if (e.deltaX && !e.shiftKey) cv.padAt = e.timeStamp;
+    const pad = e.timeStamp - (cv.padAt ?? -1e9) < 300;
+    if (!pad && wheelZooms() === !ctrlHeld && !e.shiftKey) return zoomAt(zoomGoal() * zoom(e.deltaY * (e.deltaMode === 1 ? 33 : 1)), ...at, { smooth: true });
     panBy(-(e.shiftKey ? e.deltaY : e.deltaX) * k, -(e.shiftKey ? 0 : e.deltaY) * k);
   }, { passive: false });
-  // A mouse's wheel turns in notches of 120 (`wheelDelta`), straight up and down, where a touchpad
-  // sends small steps (and sideways ones); once a gesture looks like a touchpad's, it stays one while
-  // it goes on.
-  let pad = -1e9;
-  function fromMouse(e) {
-    const mouse = e.deltaMode !== 0 || (!e.deltaX && !!e.wheelDeltaY && e.wheelDeltaY % 120 === 0);
-    if (!mouse) pad = e.timeStamp;
-    return mouse && e.timeStamp - pad > 300;
-  }
 
   root.addEventListener('click', e => {
     const b = e.target.closest('[data-cvs]');
