@@ -3,13 +3,13 @@
 // cards dragged between them) or a canvas (cards put anywhere, see canvas.js). Also the properties
 // block of an item's page, which shares the value editors with the table.
 // A Branch property links a note to a branch of one of the space's repositories (notes as tasks).
-import * as S from './notes-store.js?v=79a214f';
-import * as G from './git.js?v=79a214f';
-import { esc, icon, folderName, store } from './util.js?v=79a214f';
-import { desktop } from './platform.js?v=79a214f';
-import { localPath, sharedPath } from './projects.js?v=79a214f';
-import { pickEmoji } from './emoji.js?v=79a214f';
-import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=79a214f';
+import * as S from './notes-store.js?v=ffc59df';
+import * as G from './git.js?v=ffc59df';
+import { esc, icon, folderName, store } from './util.js?v=ffc59df';
+import { desktop } from './platform.js?v=ffc59df';
+import { localPath, sharedPath } from './projects.js?v=ffc59df';
+import { pickEmoji } from './emoji.js?v=ffc59df';
+import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=ffc59df';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 

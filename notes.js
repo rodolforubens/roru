@@ -5,17 +5,17 @@
 // below as it was. Pages nest in other pages through their text (a link to the nested page, or a
 // database block); databases show in the tree as one item. Tabs and spaces belong to app.js (see
 // initNotesUi); the table, board and canvas views and the properties are in views.js (and canvas.js).
-import * as S from './notes-store.js?v=79a214f';
-import * as G from './git.js?v=79a214f';
-import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=79a214f';
-import { openImageViewer, copyImage } from './image-viewer.js?v=79a214f';
-import { pickEmoji } from './emoji.js?v=79a214f';
-import { toMarkdown } from './markdown.js?v=79a214f';
-import { sharedPath } from './projects.js?v=79a214f';
-import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView, focusedDb } from './views.js?v=79a214f';
-import { importNotion } from './notion-import.js?v=79a214f';
-import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative } from './util.js?v=79a214f';
-import { desktop, invoke, isMobile } from './platform.js?v=79a214f';
+import * as S from './notes-store.js?v=ffc59df';
+import * as G from './git.js?v=ffc59df';
+import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=ffc59df';
+import { openImageViewer, copyImage } from './image-viewer.js?v=ffc59df';
+import { pickEmoji } from './emoji.js?v=ffc59df';
+import { toMarkdown } from './markdown.js?v=ffc59df';
+import { sharedPath } from './projects.js?v=ffc59df';
+import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView, focusedDb } from './views.js?v=ffc59df';
+import { importNotion } from './notion-import.js?v=ffc59df';
+import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative, fmtSize } from './util.js?v=ffc59df';
+import { desktop, invoke, isMobile } from './platform.js?v=ffc59df';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -276,6 +276,32 @@ async function deleteForever(ids) {
   host.closeTabs(gone);
   dropBlocks(dbs.filter(d => !gone.includes(d.parent)));
   return true;
+}
+
+// Deletes the images no note shows (taken out of their text, or left by a note deleted for good while
+// another one showed them), after asking: see "The notes' files" in notes-store.js.
+async function cleanUpFiles() {
+  let files, busy = notice('Looking for the images no note shows…');
+  try {
+    files = await S.unusedFiles();
+  } catch (e) {
+    return host.toast('Could not look for the unused images', 'error', String(e.message || e));
+  } finally {
+    busy.remove();
+  }
+  if (!files.length) return host.toast('Every image is shown by a note', 'ok');
+  const what = `${plural(files.length, 'image')} (${fmtSize(files.reduce((t, f) => t + f.size, 0))})`;
+  const ok = await host.confirmBox('Clean up unused images', `Delete ${what} that no note shows, in every space? The images of the notes in the trash stay, and so do the ones added in the last day. This can't be undone.`, 'Delete');
+  if (!ok) return;
+  busy = notice(`Deleting ${what}…`);
+  try {
+    await S.removeFiles(files);
+    host.toast(`Deleted ${what}`, 'ok');
+  } catch (e) {
+    host.toast('Could not delete the images', 'error', String(e.message || e));
+  } finally {
+    busy.remove();
+  }
 }
 
 // The trash: the notes deleted in every space (the last first), to restore them or delete them for good.
@@ -880,6 +906,7 @@ export function renderNotesPanel(el, space) {
       ...(desktop ? [{ label: 'Export all notes as Markdown…', run: () => exportSpace(space) }] : []),
       '-',
       { label: 'Trash', run: () => openTrash() },
+      { label: 'Clean up unused images…', run: cleanUpFiles },
     ]);
   });
   if (cards) mountCards($('.nt-body', el), space);

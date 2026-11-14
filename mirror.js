@@ -8,8 +8,8 @@
 // back. Changes made elsewhere come in live (Realtime) and the owner builds its objects again from
 // the rows; a change made here and not written yet wins over them. Everything is read again
 // whenever the live channel (re)connects, which brings in what was missed while offline.
-import { db } from './account.js?v=79a214f';
-import { store } from './util.js?v=79a214f';
+import { db } from './account.js?v=ffc59df';
+import { store } from './util.js?v=ffc59df';
 
 // ---------- how saving is going, for everything kept in the account ----------
 
@@ -54,6 +54,7 @@ export function createMirror(opts) {
   let outbox = new Map();      // "table:id" -> { table, id, row } (row null: deleted)
   let channel = null;
   let flushing = null, retry = null, delay = 0;
+  let synced = Promise.resolve(), syncedNow = null; // the account's rows were read (since `use`)
   const echoes = new Map();    // "table:id" -> rows written from here lately (their echo is ignored)
   const status = s => reportStatus(opts.name, s);
 
@@ -189,6 +190,7 @@ export function createMirror(opts) {
     if (!same) opts.build(rows);
     keep();
     if (!same) tell(removed);
+    syncedNow?.();
     if (outbox.size) flush();
     else status('synced');
   }
@@ -203,6 +205,7 @@ export function createMirror(opts) {
     rows = empty();
     echoes.clear();
     delay = 0;
+    synced = account ? new Promise(r => (syncedNow = r)) : Promise.resolve();
     if (!account) {
       status(null);
       tell();
@@ -225,5 +228,6 @@ export function createMirror(opts) {
 
   addEventListener('online', () => { if (account) { delay = 0; flush(); resync(); } });
 
-  return { use, write, get active() { return !!account; }, get user() { return account; } };
+  // (`synced`: once the account's rows were read, not only the ones this device kept)
+  return { use, write, get active() { return !!account; }, get user() { return account; }, get synced() { return synced; } };
 }

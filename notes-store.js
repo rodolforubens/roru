@@ -30,11 +30,11 @@
 // A deleted note goes to the trash with what is inside it: it gets `trashed` (when), and it and the
 // notes inside it leave every list (getNote, childrenOf…) until it is restored or deleted for good
 // (see "The trash" below).
-import { desktop, invoke, convertFileSrc } from './platform.js?v=79a214f';
-import { db, currentUser } from './account.js?v=79a214f';
-import { createMirror, clone, reportStatus } from './mirror.js?v=79a214f';
-import { Y, updateYFragment, yDocToProsemirrorJSON } from './vendor/tiptap.js?v=79a214f';
-import { noteSchema, fitToSchema } from './editor.js?v=79a214f';
+import { desktop, invoke, convertFileSrc } from './platform.js?v=ffc59df';
+import { db, currentUser } from './account.js?v=ffc59df';
+import { createMirror, clone, reportStatus } from './mirror.js?v=ffc59df';
+import { Y, updateYFragment, yDocToProsemirrorJSON } from './vendor/tiptap.js?v=ffc59df';
+import { noteSchema, fitToSchema } from './editor.js?v=ffc59df';
 
 const SAVE_DELAY = 300; // ms after the last edit (files on this computer)
 
@@ -74,6 +74,7 @@ export async function useAccount(user) {
     mirror.use(user);
     openDocsChannel(user);
     resendKept();
+    setTimeout(cleanPending); // (what was deleted for good while offline: see "The notes' files")
   } else {
     mirror.use(null);
     mode = desktop ? 'local' : null;
@@ -407,12 +408,10 @@ export function deleteForever(id) {
     contents.delete(x);
     clearTimeout(pending.get(x)?.timer);
     pending.delete(x);
-    if (mode === 'local') {
-      invoke('remove_file', { path: file(`${x}.json`) }).catch(() => {});
-      invoke('remove_data_dir', { path: file(`files/${x}`) }).catch(() => {});
-    }
+    if (mode === 'local') invoke('remove_file', { path: file(`${x}.json`) }).catch(() => {});
   }
   if (mode === 'account') dropDocs(ids);
+  dropFolders(ids);
   changed(ids);
   return ids;
 }
@@ -936,20 +935,167 @@ function resendKept() {
   for (const id of Object.keys(keptUnsent())) docOf(id).catch(() => {});
 }
 
-// Deleted notes take their text and files with them.
+// Deleted notes take their text and files with them (see "The notes' files" below).
 function dropDocs(ids) {
   for (const id of ids) {
     const d = docs.get(id);
     if (d) { clearTimeout(d.timer); d.queue = []; d.ydoc.destroy(); docs.delete(id); }
   }
   keepUnsent();
-  const uid = mirror.user.id;
-  db.from('note_updates').delete().in('note_id', ids).then(r => r.error && console.warn('Could not delete the text of the notes', r.error));
-  for (const id of ids) {
-    db.storage.from(BUCKET).list(`${uid}/files/${id}`).then(({ data }) => {
-      if (data?.length) db.storage.from(BUCKET).remove(data.map(f => `${uid}/files/${id}/${f.name}`));
-    });
+}
+
+// ---------- the notes' files ----------
+//
+// A note's pictures are in its folder of files ("files/<id>/…"), and its text points at them. A note
+// deleted for good takes its folder with it, but a picture copied from it into another note still
+// points at that folder, so the files the other notes show stay: the texts of all the notes (the
+// trash's too) are read first. In the account, the notes deleted for good whose text and files
+// weren't cleaned yet are kept on this device (`dropsPending`), so going offline only delays it.
+// A picture taken out of a text stays in its folder: "Clean up unused images" deletes the files no
+// note shows (unusedFiles, then removeFiles), except the ones added lately, whose text may be on its
+// way from another device.
+
+const RECENT = 24 * 3600_000;
+const dropsKey = () => `roru.notes-files-pending.${mirror.user?.id}`;
+const dropsPending = () => { try { return JSON.parse(localStorage.getItem(dropsKey())) || []; } catch { return []; } };
+const setDropsPending = ids => { try { localStorage.setItem(dropsKey(), JSON.stringify(ids)); } catch {} };
+let cleaning = false;
+
+function dropFolders(ids) {
+  if (mode === 'local') return cleanFolders(ids).catch(e => console.warn('Could not delete the files of the notes', e));
+  if (mode !== 'account') return;
+  setDropsPending([...new Set([...dropsPending(), ...ids])]);
+  setTimeout(cleanPending);
+}
+
+// The text and the files of the notes deleted for good that weren't cleaned yet.
+async function cleanPending() {
+  if (mode !== 'account' || !mirror.user || cleaning || !dropsPending().length) return;
+  cleaning = true;
+  const user = mirror.user;
+  try {
+    await mirror.synced;
+    const ids = dropsPending();
+    if (mirror.user !== user || !ids.length) return;
+    const { error } = await db.from('note_updates').delete().in('note_id', ids);
+    if (error) throw error;
+    await cleanFolders(ids);
+    if (mirror.user === user) setDropsPending(dropsPending().filter(id => !ids.includes(id)));
+  } catch (e) {
+    console.warn('Could not delete the text and the files of the notes deleted for good yet', e);
+  } finally {
+    cleaning = false;
   }
+}
+addEventListener('online', () => cleanPending());
+
+// The files of the folders of `ids` (notes deleted for good) that no note shows go.
+async function cleanFolders(ids) {
+  const files = await listFiles(ids);
+  if (!files.length) return;
+  const used = await usedFiles();
+  await removeFiles(files.filter(f => !used.has(f.src)));
+}
+
+// Every "files/…" address the contents of the notes (the trash's too) point at.
+async function usedFiles() {
+  const used = new Set();
+  const take = x => {
+    if (typeof x === 'string') { if (x.startsWith('files/')) used.add(x); }
+    else if (x && typeof x === 'object') for (const v of Object.values(x)) take(v);
+  };
+  if (mode === 'account') await mirror.synced;
+  // (and the notes' own data and their databases' views, which may point at some one day)
+  take(all);
+  take(collections);
+  if (mode === 'account') {
+    // every row of text at once (a few requests, not one per note), by id so that no row is skipped
+    // when some are folded meanwhile (the row folding them comes later)
+    const rows = new Map();
+    for (let last = 0; ;) {
+      const { data, error } = await db.from('note_updates').select('id, note_id, data').gt('id', last).order('id').limit(1000);
+      if (error) throw error;
+      for (const r of data) {
+        if (!rows.has(r.note_id)) rows.set(r.note_id, []);
+        rows.get(r.note_id).push(unb64(r.data));
+      }
+      if (data.length < 1000) break;
+      last = data.at(-1).id;
+    }
+    const kept = keptUnsent();
+    for (const n of all) {
+      const d = docs.get(n.id);
+      if (d && (await d.ready.then(() => true, () => false))) { take(yDocToProsemirrorJSON(d.ydoc, FIELD)); continue; }
+      const ydoc = new Y.Doc();
+      for (const u of [...(rows.get(n.id) || []), ...(kept[n.id] || []).map(unb64)]) Y.applyUpdate(ydoc, u);
+      take(yDocToProsemirrorJSON(ydoc, FIELD));
+      ydoc.destroy();
+    }
+  } else if (mode === 'local') {
+    for (const n of all) {
+      if (contents.has(n.id)) { take(contents.get(n.id)); continue; }
+      const text = await invoke('read_file', { repo: dir, path: `${n.id}.json` }).catch(() => null);
+      try { take(text ? JSON.parse(text) : null); } catch {}
+    }
+  }
+  return used;
+}
+
+// The files kept, of the folders of `ids` (or of every folder): [{ src, size, at (when it was
+// added, ms), folder }].
+async function listFiles(ids = null) {
+  const out = [];
+  if (mode === 'account') {
+    const base = `${mirror.user.id}/files`;
+    const list = async path => {
+      const items = [];
+      for (let offset = 0; ; offset += 1000) {
+        const { data, error } = await db.storage.from(BUCKET).list(path, { limit: 1000, offset });
+        if (error) throw error;
+        items.push(...data);
+        if (data.length < 1000) break;
+      }
+      return items;
+    };
+    // (a folder is listed with no id)
+    for (const folder of ids || (await list(base)).filter(f => !f.id).map(f => f.name)) {
+      for (const f of await list(`${base}/${folder}`)) {
+        if (f.id) out.push({ src: `files/${folder}/${f.name}`, size: f.metadata?.size || 0, at: Date.parse(f.created_at) || 0, folder });
+      }
+    }
+  } else if (mode === 'local') {
+    const list = path => invoke('list_dir', { repo: dir, path }).catch(() => []);
+    for (const folder of ids || (await list('files')).filter(e => e.dir).map(e => e.name)) {
+      for (const e of await list(`files/${folder}`)) if (!e.dir) out.push({ src: `files/${folder}/${e.name}`, size: e.size, at: e.created * 1000, folder });
+    }
+  }
+  return out;
+}
+
+// The files no note shows (in the trash or not), but the ones added in the last day.
+export async function unusedFiles() {
+  const files = await listFiles();
+  const used = await usedFiles();
+  return files.filter(f => !used.has(f.src) && Date.now() - f.at > RECENT);
+}
+
+// Deletes files (of unusedFiles), and the folders they leave empty on this computer.
+export async function removeFiles(files) {
+  if (!files.length) return;
+  if (mode === 'account') {
+    const uid = mirror.user.id;
+    for (let i = 0; i < files.length; i += 500) {
+      const { error } = await db.storage.from(BUCKET).remove(files.slice(i, i + 500).map(f => `${uid}/${f.src}`));
+      if (error) throw error;
+    }
+  } else if (mode === 'local') {
+    for (const f of files) await invoke('remove_file', { path: file(f.src) });
+    for (const folder of new Set(files.map(f => f.folder))) {
+      const left = await invoke('list_dir', { repo: dir, path: `files/${folder}` }).catch(() => null);
+      if (left && !left.length) await invoke('remove_data_dir', { path: file(`files/${folder}`) }).catch(() => {});
+    }
+  }
+  for (const f of files) signed.delete(f.src);
 }
 
 addEventListener('online', () => { for (const d of docs.values()) send(d); });
