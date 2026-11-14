@@ -11,8 +11,8 @@
 // copy hides the item. Delete deletes what is selected (items to the trash, after a prompt), and F
 // frames it. The wheel zooms it (Ctrl + wheel moves it, or the other way around), a pinch too.
 // Where the canvas is looked at (moved and zoomed) is kept on this device only.
-import * as S from './notes-store.js?v=4030c69';
-import { esc, icon, store, glider, plural } from './util.js?v=4030c69';
+import * as S from './notes-store.js?v=2d99565';
+import { esc, icon, store, glider, plural } from './util.js?v=2d99565';
 
 const newId = () => crypto.randomUUID?.() ?? Date.now().toString(36) + Math.random().toString(36).slice(2);
 const clone = v => JSON.parse(JSON.stringify(v ?? null));
@@ -144,6 +144,11 @@ export function canvasMenuItems(c, key, view, host) {
 
 // What the wheel does on the canvases of this device: zoom (Ctrl + wheel moves them), or move them.
 const wheelZooms = () => store('canvasWheel') !== 'move';
+// How much a step of the zoom (the − and + buttons, a notch of the wheel) zooms, on this device: picked
+// by the button next to them.
+const ZOOM_STEPS = [1.1, 1.25, 1.5, 2, 3];
+const zoomStep = () => (ZOOM_STEPS.includes(store('canvasZoomStep')) ? store('canvasZoomStep') : 1.25);
+const stepTitle = () => `Zoom step: the − and + buttons and each notch of the wheel zoom ${zoomStep()}×`;
 
 // The "New" of the view's bar: an item in the middle of the canvas.
 export const canvasNew = c => c.canvas?.api?.newItem();
@@ -197,6 +202,8 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
       <button class="cvs-tb" data-cvs="zoom-out" title="Zoom out">${icon('minus')}</button>
       <button class="cvs-tb cvs-zv" data-cvs="zoom-reset" title="Back to 100%">100%</button>
       <button class="cvs-tb" data-cvs="zoom-in" title="Zoom in">${icon('plus')}</button>
+      <button class="cvs-tb cvs-zs" data-cvs="zoom-step" title="${stepTitle()}">${zoomStep()}×</button>
+      <span class="cvs-sep"></span>
       <button class="cvs-tb" data-cvs="fit" title="Fit to content">${icon('fit')}</button>
     </div>
     ${tray ? trayHtml() : ''}
@@ -1026,7 +1033,9 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
     // (two fingers going sideways: a touchpad, which moves the canvas while the gesture goes on)
     if (e.deltaX && !e.shiftKey) cv.padAt = e.timeStamp;
     const pad = e.timeStamp - (cv.padAt ?? -1e9) < 300;
-    if (!pad && wheelZooms() === !ctrlHeld && !e.shiftKey) return zoomAt(zoomGoal() * zoom(e.deltaY * (e.deltaMode === 1 ? 33 : 1)), ...at, { smooth: true });
+    // (a notch zooms one step; a smooth wheel's smaller steps, a part of it)
+    const notches = Math.max(-1, Math.min(1, e.deltaY * (e.deltaMode === 1 ? 33 : 1) / 100));
+    if (!pad && wheelZooms() === !ctrlHeld && !e.shiftKey) return zoomAt(zoomGoal() * zoomStep() ** -notches, ...at, { smooth: true });
     const dx = -(e.shiftKey ? e.deltaY : e.deltaX) * k, dy = -(e.shiftKey ? 0 : e.deltaY) * k;
     // the wheel's steps glide; a touchpad's two fingers move it at once
     if (pad) panBy(dx, dy);
@@ -1049,8 +1058,20 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
       case 'new-text': return newFreeAt('text');
       case 'new-shape': return host.showMenu(r.left, r.bottom + 4, ['box', 'ellipse', 'diamond'].map(s => ({ label: SHAPES[s], run: () => newFreeAt(s) })));
       case 'tray': return toggleTray();
-      case 'zoom-in': return zoomBy(1.25);
-      case 'zoom-out': return zoomBy(0.8);
+      case 'zoom-in': return zoomBy(zoomStep());
+      case 'zoom-out': return zoomBy(1 / zoomStep());
+      case 'zoom-step': {
+        const set = v => {
+          store('canvasZoomStep', v === 1.25 ? null : v);
+          b.textContent = `${v}×`;
+          b.title = stepTitle();
+        };
+        const rr = b.getBoundingClientRect();
+        return host.showMenu(rr.left, rr.top - 4 - (ZOOM_STEPS.length + 1) * 31, [
+          { label: 'Each step zooms', disabled: true, run: () => {} },
+          ...ZOOM_STEPS.map(v => ({ label: `${v}×${zoomStep() === v ? '  ✓' : ''}`, run: () => set(v) })),
+        ]);
+      }
       case 'zoom-reset': { const rr = rect(); return zoomAt(1, rr.width / 2, rr.height / 2, { smooth: true }); }
       case 'fit': return fit({ smooth: true });
       case 'snap': return S.updateView(key, viewId, { snap: V().snap ? null : true });
