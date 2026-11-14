@@ -11,8 +11,8 @@
 // copy hides the item. Delete deletes what is selected (items to the trash, after a prompt), and F
 // frames it. The wheel zooms it (Ctrl + wheel moves it, or the other way around), a pinch too.
 // Where the canvas is looked at (moved and zoomed) is kept on this device only.
-import * as S from './notes-store.js?v=2d99565';
-import { esc, icon, store, glider, plural } from './util.js?v=2d99565';
+import * as S from './notes-store.js?v=79a214f';
+import { esc, icon, store, glider, plural } from './util.js?v=79a214f';
 
 const newId = () => crypto.randomUUID?.() ?? Date.now().toString(36) + Math.random().toString(36).slice(2);
 const clone = v => JSON.parse(JSON.stringify(v ?? null));
@@ -34,9 +34,13 @@ const hueOf = text => [...(text || 'x')].reduce((h, c) => (h * 31 + c.charCodeAt
 
 // The pictures and the start of the text of the items (from host.preview), the addresses of the
 // pictures once known, so drawing the canvas again doesn't make them blink, and their shapes.
+// The account's addresses are signed for an hour, so they are kept 45 minutes (see S.fileUrl).
 const previews = new Map(); // item id -> { updated, cover, text }
-const urls = new Map();     // "files/…" -> address
+const urls = new Map();     // "files/…" -> { url, at }
 const ratios = new Map();   // "files/…" -> width / height
+const URL_LIFE = 45 * 60_000;
+const knownUrl = src => { const k = urls.get(src); return k && Date.now() - k.at < URL_LIFE ? k.url : null; };
+const keepUrl = (src, url) => urls.set(src, { url, at: Date.now() });
 
 // An image node `w` wide whose picture is `ratio` (width / height): its height. Around the picture
 // are the node's border and padding (6px on each side, 6px on top), and below it the caption
@@ -49,9 +53,9 @@ async function ratioOfSrc(src) {
   if (!src) return null;
   if (ratios.has(src)) return ratios.get(src);
   try {
-    const url = urls.get(src) || (await S.fileUrl(src));
+    const url = knownUrl(src) || (await S.fileUrl(src));
     if (!url) return null;
-    urls.set(src, url);
+    keepUrl(src, url);
     const img = new Image();
     img.src = url;
     await img.decode();
@@ -1282,14 +1286,18 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
       const frame = el.querySelector('.cvs-frame');
       if (!frame || !p.cover || frame.querySelector('img')) continue;
       const img = Object.assign(document.createElement('img'), { alt: '', draggable: false });
-      img.onerror = () => img.remove();
+      const load = fresh => Promise.resolve(S.fileUrl(p.cover, { fresh })).then(u => { if (!u) return img.remove(); keepUrl(p.cover, u); img.src = u; });
+      // (an address that doesn't load any more, like an old one: a new one is asked for, once)
+      img.onerror = () => {
+        urls.delete(p.cover);
+        if (img.dataset.again) return img.remove();
+        img.dataset.again = '1';
+        load(true);
+      };
       img.onload = () => ratios.set(p.cover, img.naturalWidth / (img.naturalHeight || 1));
-      const known = urls.get(p.cover);
+      const known = knownUrl(p.cover);
       if (known) img.src = known;
-      else {
-        const url = S.fileUrl(p.cover);
-        Promise.resolve(url).then(u => { if (!u) return img.remove(); urls.set(p.cover, u); img.src = u; });
-      }
+      else load(false);
       frame.append(img);
     }
   }
