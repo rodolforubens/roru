@@ -9,9 +9,10 @@
 // is written with the database like the other views. Items come onto the canvas by themselves (in a
 // free spot below what is there) unless they were hidden from it (`off`); hiding an item's last
 // copy hides the item. Delete deletes what is selected (items to the trash, after a prompt), and F
-// frames it. Where the canvas is looked at (moved and zoomed) is kept on this device only.
-import * as S from './notes-store.js?v=0cb2e23';
-import { esc, icon, store, glider, plural } from './util.js?v=0cb2e23';
+// frames it. A mouse's wheel zooms it (Ctrl + wheel moves it), a touchpad's two fingers move it.
+// Where the canvas is looked at (moved and zoomed) is kept on this device only.
+import * as S from './notes-store.js?v=821b669';
+import { esc, icon, store, glider, plural } from './util.js?v=821b669';
 
 const newId = () => crypto.randomUUID?.() ?? Date.now().toString(36) + Math.random().toString(36).slice(2);
 const clone = v => JSON.parse(JSON.stringify(v ?? null));
@@ -967,7 +968,8 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
     boxSelect(e);
   });
 
-  // The wheel moves the canvas (Shift: sideways), Ctrl + wheel and a touchpad pinch zoom it, not the UI.
+  // A mouse's wheel zooms the canvas (not the UI), and with Ctrl it moves it up and down (Shift:
+  // sideways); a touchpad keeps its gestures: two fingers move it, a pinch zooms it.
   // Pictures pasted (where the pointer is, or else in the middle) or dropped become items.
   root.addEventListener('pointermove', e => { cv.pointer = { x: e.clientX, y: e.clientY }; });
   root.addEventListener('pointerleave', () => { cv.pointer = null; });
@@ -997,16 +999,26 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
     if (e.target.closest('.cvs-tray')) return;
     e.preventDefault();
     e.stopPropagation();
-    const r = rect();
-    if (e.ctrlKey || e.metaKey) {
+    const r = rect(), k = e.deltaMode === 1 ? 16 : 1, ctrl = e.ctrlKey || e.metaKey, mouse = fromMouse(e);
+    // (a touchpad's pinch comes as a wheel with Ctrl)
+    if (mouse ? !ctrl && !e.shiftKey : ctrl) {
       // a mouse wheel's notches glide; a touchpad's pinch (small steps, many of them) follows the fingers
-      const notch = e.deltaMode !== 0 || Math.abs(e.deltaY) >= 40;
-      const f = Math.exp(-Math.max(-50, Math.min(50, e.deltaY)) * 0.01);
-      return zoomAt((notch ? zoomGoal() : cv.cam.z) * f, e.clientX - r.left, e.clientY - r.top, { smooth: notch });
+      const d = e.deltaY * (e.deltaMode === 1 ? 33 : 1);
+      const f = Math.exp(-Math.max(-50, Math.min(50, d)) * 0.01);
+      return zoomAt((mouse ? zoomGoal() : cv.cam.z) * f, e.clientX - r.left, e.clientY - r.top, { smooth: mouse });
     }
-    const k = e.deltaMode === 1 ? 16 : 1;
+    if (mouse) return e.shiftKey ? panBy(-e.deltaY * k, 0) : panBy(0, -e.deltaY * k);
     panBy(-(e.shiftKey ? e.deltaY : e.deltaX) * k, -(e.shiftKey ? 0 : e.deltaY) * k);
   }, { passive: false });
+  // A mouse's wheel turns in notches of 120 (`wheelDelta`), straight up and down, where a touchpad
+  // sends small steps (and sideways ones); once a gesture looks like a touchpad's, it stays one while
+  // it goes on.
+  let pad = -1e9;
+  function fromMouse(e) {
+    const mouse = e.deltaMode !== 0 || (!e.deltaX && !!e.wheelDeltaY && e.wheelDeltaY % 120 === 0);
+    if (!mouse) pad = e.timeStamp;
+    return mouse && e.timeStamp - pad > 300;
+  }
 
   root.addEventListener('click', e => {
     const b = e.target.closest('[data-cvs]');

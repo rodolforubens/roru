@@ -3,13 +3,13 @@
 // cards dragged between them) or a canvas (cards put anywhere, see canvas.js). Also the properties
 // block of an item's page, which shares the value editors with the table.
 // A Branch property links a note to a branch of one of the space's repositories (notes as tasks).
-import * as S from './notes-store.js?v=0cb2e23';
-import * as G from './git.js?v=0cb2e23';
-import { esc, icon, folderName, store } from './util.js?v=0cb2e23';
-import { desktop } from './platform.js?v=0cb2e23';
-import { localPath, sharedPath } from './projects.js?v=0cb2e23';
-import { pickEmoji } from './emoji.js?v=0cb2e23';
-import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=0cb2e23';
+import * as S from './notes-store.js?v=821b669';
+import * as G from './git.js?v=821b669';
+import { esc, icon, folderName, store } from './util.js?v=821b669';
+import { desktop } from './platform.js?v=821b669';
+import { localPath, sharedPath } from './projects.js?v=821b669';
+import { pickEmoji } from './emoji.js?v=821b669';
+import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=821b669';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -634,7 +634,10 @@ function paint(c) {
     mountCanvas(body, c, { key, view, items: notes, host, repaint: () => paint(c), focus: focused });
   } else {
     body.innerHTML = boardHtml(col, view, notes);
-    if (view.stretch) fillSnippets(c, notes);
+    if (view.stretch) {
+      fillSnippets(c, notes);
+      showGaps(c);
+    }
   }
   SCROLLERS.forEach((sel, i) => {
     const x = scrolled[i] && $(sel, c.el);
@@ -788,6 +791,27 @@ function tableHtml(col, view, notes) {
 
 // ---------- board ----------
 
+// A stretched board's post-its leave room at the end of their last row: a "New" fills it (like the
+// column's: a click adds an item there, its title typed on it; a right-click offers a database). It
+// shows where there is room, so it is placed again when the board's size changes.
+function showGaps(c) {
+  c.gapsRo?.disconnect();
+  const bd = c.el.querySelector('.bd-stretch');
+  if (!bd) return;
+  const place = () => {
+    for (const cards of bd.querySelectorAll('.bd-cards')) {
+      const gap = cards.querySelector('.bd-gap'), style = getComputedStyle(cards);
+      if (!gap) continue;
+      const cols = style.display === 'grid' ? style.gridTemplateColumns.split(' ').length : 0;
+      const n = cards.querySelectorAll('.bd-card').length;
+      gap.hidden = !cols || (n > 0 && n % cols === 0);
+    }
+  };
+  place();
+  c.gapsRo = new ResizeObserver(() => { if (bd.isConnected) place(); });
+  for (const col of bd.querySelectorAll('.bd-col')) c.gapsRo.observe(col);
+}
+
 // The start of the items' text, shown on the post-its of a stretched board (as each page is read).
 const snippets = new Map(); // id -> { updated, text }
 function fillSnippets(c, notes) {
@@ -860,7 +884,7 @@ function boardHtml(col, view, notes) {
       <div class="bd-head" ${o ? 'draggable="true" title="Drag to move the column"' : ''}>${label(o)}<span class="bd-n">${cards.length}</span>
         <button class="cv-btn bd-more" data-cv="group-menu" title="Group options">${icon('more')}</button>
         <button class="cv-btn bd-top" data-cv="new-top" title="Add a card at the top">${icon('plus')}</button></div>
-      <div class="bd-cards">${cards.map(card).join('')}</div>
+      <div class="bd-cards">${cards.map(card).join('')}${view.stretch ? `<button class="bd-gap" data-cv="new-in" title="Add an item (right-click: a database)" hidden>${icon('plus')}<span>New</span></button>` : ''}</div>
       <button class="bd-new" data-cv="new-in">${icon('plus')}New</button></div>`;
   // Pinned groups leave the columns for a list on the right, like in Notion
   const pinned = new Set(view.pinned || []);

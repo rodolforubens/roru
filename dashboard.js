@@ -2,10 +2,10 @@
 // its upstream, local changes, last commit), and fetch/pull for all of them at once.
 // Pulls here are fast-forward only, so they never create merge commits or stop on conflicts:
 // a branch that diverged from its upstream is reported, to be merged or rebased in its tab.
-import * as G from './git.js?v=0cb2e23';
-import * as P from './projects.js?v=0cb2e23';
-import { esc, fmtRelative, icon, folderName, normPath, plural } from './util.js?v=0cb2e23';
-import { desktop, invoke } from './platform.js?v=0cb2e23';
+import * as G from './git.js?v=821b669';
+import * as P from './projects.js?v=821b669';
+import { esc, fmtRelative, icon, folderName, normPath, plural } from './util.js?v=821b669';
+import { desktop, invoke } from './platform.js?v=821b669';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 

@@ -1558,7 +1558,7 @@ body:has(.cv-focus) #peek.side:not([hidden]) { position: fixed; }
 /* a stretched board: the columns share the width, and one wide enough for two shows its cards as
    post-its (squares, with the start of their text) side by side, in a grid */
 .bd-stretch .bd-col { flex: 1 1 260px; width: auto; min-width: 240px; container: bdcol / inline-size; }
-.bd-sx { display: none; }
+.bd-sx, .bd-gap { display: none; }
 @container bdcol (min-width: 430px) {
   .bd-stretch .bd-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; align-items: start; }
   .bd-stretch .bd-card {
@@ -1573,6 +1573,12 @@ body:has(.cv-focus) #peek.side:not([hidden]) { position: fixed; }
   .bd-stretch .bd-sx:empty { display: none; }
   .bd-stretch .bd-card.drop-before::before { top: 0; bottom: 0; left: -6px; right: auto; width: 2px; height: auto; }
   .bd-stretch .bd-col.drop-end .bd-cards::after { width: 2px; height: 60px; }
+  .bd-gap:not([hidden]) {
+    display: flex; align-items: center; justify-content: center; gap: 6px; aspect-ratio: 1; min-height: 150px;
+    border: 1px dashed transparent; border-radius: 3px 3px 16px 3px; background: none; color: var(--text-3); font-size: 13px; cursor: pointer;
+  }
+  .bd-gap .ic { width: 15px; height: 15px; }
+  .bd-gap:hover { border-color: var(--border); background: var(--hover); color: var(--text-2); }
 }
 
 /* the properties of a note's page */
