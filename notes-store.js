@@ -3,7 +3,7 @@
 //
 // - On this computer (the desktop app signed out), as files in the app data folder:
 //     notes/index.json   every note's metadata: { id, space, parent, title, order, created, updated,
-//                        props, wideViews, openIn }, and the collections (see below)
+//                        props, wideViews, openIn, focusOpen }, and the collections (see below)
 //     notes/<id>.json    its content (a ProseMirror document as JSON)
 //     notes/files/<id>/  its files (images), referred to in the content as "files/<id>/<name>"
 // - In the account (signed in; always on the web page), live like the projects: each note is a row
@@ -30,11 +30,11 @@
 // A deleted note goes to the trash with what is inside it: it gets `trashed` (when), and it and the
 // notes inside it leave every list (getNote, childrenOf…) until it is restored or deleted for good
 // (see "The trash" below).
-import { desktop, invoke, convertFileSrc } from './platform.js?v=2abb843';
-import { db, currentUser } from './account.js?v=2abb843';
-import { createMirror, clone, reportStatus } from './mirror.js?v=2abb843';
-import { Y, updateYFragment, yDocToProsemirrorJSON } from './vendor/tiptap.js?v=2abb843';
-import { noteSchema, fitToSchema } from './editor.js?v=2abb843';
+import { desktop, invoke, convertFileSrc } from './platform.js?v=262b7c4';
+import { db, currentUser } from './account.js?v=262b7c4';
+import { createMirror, clone, reportStatus } from './mirror.js?v=262b7c4';
+import { Y, updateYFragment, yDocToProsemirrorJSON } from './vendor/tiptap.js?v=262b7c4';
+import { noteSchema, fitToSchema } from './editor.js?v=262b7c4';
 
 const SAVE_DELAY = 300; // ms after the last edit (files on this computer)
 
@@ -664,6 +664,15 @@ export function setOpenIn(id, mode) {
   if (!n || (n.openIn ?? null) === mode) return;
   if (mode) n.openIn = mode;
   else delete n.openIn;
+  changed([id]);
+}
+
+// Where a database's items open from its views in focus mode (`focusOpen`: 'side', or 'center' when
+// it has none: see views.js).
+export function setFocusOpen(id, mode) {
+  const n = getNote(id);
+  if (!n || n.focusOpen === mode) return;
+  n.focusOpen = mode;
   changed([id]);
 }
 

@@ -5,17 +5,17 @@
 // below as it was. Pages nest in other pages through their text (a link to the nested page, or a
 // database block); databases show in the tree as one item. Tabs and spaces belong to app.js (see
 // initNotesUi); the table, board and canvas views and the properties are in views.js (and canvas.js).
-import * as S from './notes-store.js?v=2abb843';
-import * as G from './git.js?v=2abb843';
-import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=2abb843';
-import { openImageViewer, copyImage } from './image-viewer.js?v=2abb843';
-import { pickEmoji } from './emoji.js?v=2abb843';
-import { toMarkdown } from './markdown.js?v=2abb843';
-import { sharedPath } from './projects.js?v=2abb843';
-import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView, focusedDb } from './views.js?v=2abb843';
-import { importNotion } from './notion-import.js?v=2abb843';
-import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative } from './util.js?v=2abb843';
-import { desktop, invoke, isMobile } from './platform.js?v=2abb843';
+import * as S from './notes-store.js?v=262b7c4';
+import * as G from './git.js?v=262b7c4';
+import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=262b7c4';
+import { openImageViewer, copyImage } from './image-viewer.js?v=262b7c4';
+import { pickEmoji } from './emoji.js?v=262b7c4';
+import { toMarkdown } from './markdown.js?v=262b7c4';
+import { sharedPath } from './projects.js?v=262b7c4';
+import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView, focusedDb } from './views.js?v=262b7c4';
+import { importNotion } from './notion-import.js?v=262b7c4';
+import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative } from './util.js?v=262b7c4';
+import { desktop, invoke, isMobile } from './platform.js?v=262b7c4';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -30,6 +30,9 @@ export const noteIcon = id => S.getNote(id)?.icon || (S.isDatabase(id) ? 'table'
 // new tab). Each page or database chooses it for the notes inside it, or opens them like its parent
 // does ("Same as parent"); the top of a space opens them as chosen in the dashboard (or start page).
 const OPEN_IN = { side: 'Side peek', center: 'Center peek', tab: 'New tab' };
+// The kinds of database a "New database" offers (its first view), each made by `make(view)`.
+export const databaseKinds = make => [['table', 'Table'], ['board', 'Board'], ['list', 'List'], ['canvas', 'Canvas']]
+  .map(([view, name]) => ({ label: name, run: () => make(view) }));
 const topOpen = () => store('notesOpen') || 'side';
 const openPref = (parent = null) => S.getNote(S.openInSource(parent))?.openIn || topOpen(); // inside `parent`
 const openPrefOf = id => openPref(S.getNote(id)?.parent ?? null); // where a note opens
@@ -45,6 +48,7 @@ export async function initNotesUi(h) {
     openInMenu: openInItems,
     deleteNotes,
     folders: h.folders, reveal: h.reveal, gitChanged: h.gitChanged, preview: previewOf,
+    peek: (id, mode) => openNote(id, mode),
     // a picture added to a note's text (at its end): returns its `src`
     addImage: async (id, file) => {
       const src = await uploadImage(id, file);
@@ -441,12 +445,12 @@ export function noteMenuItems(id, ctx = 'list') {
     // (a phone has no peeks)
     ...(inTab || isMobile() || (ctx === 'peek' && peek?.mode === 'side') ? [] : [{ label: 'Open in side peek', run: () => openNote(id, 'side') }]),
     ...(inTab || isMobile() || (ctx === 'peek' && peek?.mode === 'center') ? [] : [{ label: 'Open in center peek', run: () => openNote(id, 'center') }]),
-    { label: db ? 'Open items in…' : 'Open sub-pages in…', run: r => host.showMenu(r.left, r.top, openInItems(id)) },
+    { label: db ? 'Open items in' : 'Open sub-pages in', items: () => openInItems(id) },
     { label: n.icon ? 'Change icon…' : 'Add icon…', run: r => pickEmoji(r, n.icon, e => S.setIcon(id, e)) },
     '-',
     ...(db ? [{ label: 'Add an item', run: () => newNote({ space: n.space, parent: id }) }] : [
       { label: 'Add a page inside', run: () => newNote({ space: n.space, parent: id }) },
-      { label: 'Add a database inside', run: () => newDatabase({ space: n.space, parent: id, open: 'none' }) },
+      { label: 'Add a database inside', items: () => databaseKinds(view => newDatabase({ space: n.space, parent: id, view, open: 'none' })) },
       ...(desktop && n.space === host.space() ? [{ label: 'Create a branch for this note…', run: () => createBranchFor(id) }] : []),
       ...(S.databasesOf(id).length ? [{ label: `Full-width databases${S.wideViewsOf(id) ? '  ✓' : ''}`, run: () => S.setWideViews(id, !S.wideViewsOf(id)) }] : []),
       { label: 'Import from Notion here…', run: () => importFromNotion(n.space, id) },
@@ -553,10 +557,12 @@ function bindPeek(el) {
   el._bound = true;
   // the center peek closes with a click on the backdrop
   el.addEventListener('mousedown', e => { if (e.target === el && peek?.mode === 'center') closePeek(); });
-  // the side peek is resized from its left edge
-  el.addEventListener('mousedown', e => {
-    if (!e.target.classList.contains('peek-grip') || peek?.mode !== 'side') return;
+  // the side peek is resized from its left edge (with a finger too: pointer events held by the grip)
+  el.addEventListener('pointerdown', e => {
+    const grip = e.target;
+    if (!grip.classList.contains('peek-grip') || peek?.mode !== 'side' || e.button !== 0) return;
     e.preventDefault();
+    try { grip.setPointerCapture(e.pointerId); } catch {}
     const panel = $('.peek-panel', el), right = el.getBoundingClientRect().right;
     const max = el.parentElement.clientWidth - 160;
     const move = ev => {
@@ -564,14 +570,16 @@ function bindPeek(el) {
       panel.style.setProperty('--peek-w', w + 'px');
     };
     const up = () => {
-      removeEventListener('mousemove', move);
-      removeEventListener('mouseup', up);
+      grip.removeEventListener('pointermove', move);
+      grip.removeEventListener('pointerup', up);
+      grip.removeEventListener('pointercancel', up);
       document.body.style.cursor = '';
       store('peekWidth', panel.offsetWidth);
     };
     document.body.style.cursor = 'col-resize';
-    addEventListener('mousemove', move);
-    addEventListener('mouseup', up);
+    grip.addEventListener('pointermove', move);
+    grip.addEventListener('pointerup', up);
+    grip.addEventListener('pointercancel', up);
   });
 }
 
@@ -858,11 +866,11 @@ export function renderNotesPanel(el, space) {
     const b = e.target.closest('[data-nt]');
     if (!b) return;
     if (b.dataset.nt === 'page') return newNote({ space });
-    if (b.dataset.nt === 'database') return newDatabase({ space });
     const r = b.getBoundingClientRect();
+    if (b.dataset.nt === 'database') return host.showMenu(r.left, r.bottom + 4, databaseKinds(view => newDatabase({ space, view })));
     host.showMenu(r.right - 220, r.bottom + 4, [
       { label: 'New page', run: () => newNote({ space }) },
-      { label: 'New database', run: () => newDatabase({ space }) },
+      { label: 'New database', items: () => databaseKinds(view => newDatabase({ space, view })) },
       '-',
       { label: cards ? 'Show as a list' : 'Show as cards', run: () => { setLayout(space, cards ? 'list' : 'cards'); renderNotesPanel(el, space); } },
       // where the notes at the top open, and the ones inside them that open like their parent
@@ -1025,6 +1033,9 @@ function shownAs(id) {
 // A database is a single row: its items are in its views. A tree whose root is a database (its
 // List view) shows the items.
 function paintTree(t) {
+  // (not while a title is typed in one of its rows: see typeTitle in views.js; the end of the typing
+  // changes the notes, which draws it again)
+  if (t.el.contains(document.activeElement) && document.activeElement.matches('input')) return;
   const active = t.sidebar ? shownAs(host.activeNote()) : null;
   const row = (n, depth) => {
     const db = n.kind === 'database';
@@ -1049,7 +1060,11 @@ function bindTree(t) {
   el.addEventListener('click', e => {
     const b = e.target.closest('[data-nt]'), row = rowOf(e), id = row?.dataset.note;
     if (b?.dataset.nt === 'new') return newNote({ space: t.space, open: 'tab' });
-    if (b?.dataset.nt === 'new-db') return newDatabase({ space: t.space, open: 'tab' });
+    // (a database: of the kind picked in a menu)
+    if (b?.dataset.nt === 'new-db') {
+      const r = b.getBoundingClientRect();
+      return host.showMenu(r.left, r.bottom + 4, databaseKinds(view => newDatabase({ space: t.space, view, open: 'tab' })));
+    }
     if (b?.dataset.nt === 'trash') return openTrash();
     if (!row) return;
     if (b?.dataset.nt === 'toggle') { expand(id, !expanded.has(id)); return paintTree(t); }

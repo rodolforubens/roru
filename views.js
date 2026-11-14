@@ -3,13 +3,13 @@
 // cards dragged between them) or a canvas (cards put anywhere, see canvas.js). Also the properties
 // block of an item's page, which shares the value editors with the table.
 // A Branch property links a note to a branch of one of the space's repositories (notes as tasks).
-import * as S from './notes-store.js?v=2abb843';
-import * as G from './git.js?v=2abb843';
-import { esc, icon, folderName, store } from './util.js?v=2abb843';
-import { desktop } from './platform.js?v=2abb843';
-import { localPath, sharedPath } from './projects.js?v=2abb843';
-import { pickEmoji } from './emoji.js?v=2abb843';
-import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=2abb843';
+import * as S from './notes-store.js?v=262b7c4';
+import * as G from './git.js?v=262b7c4';
+import { esc, icon, folderName, store } from './util.js?v=262b7c4';
+import { desktop } from './platform.js?v=262b7c4';
+import { localPath, sharedPath } from './projects.js?v=262b7c4';
+import { pickEmoji } from './emoji.js?v=262b7c4';
+import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=262b7c4';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -18,19 +18,27 @@ let host = null;
 
 // `h`: { mountTree(el, space, { parent, open }), noteMenu(id), deleteNotes(ids), folders() (of the
 // current space), reveal({ kind: 'branch', id, repo }), gitChanged(repo), preview(id) (a page's first
-// picture and the start of its text), showMenu, modal, confirmBox, toast }.
+// picture and the start of its text), peek(id, mode) (opens a note in a side or center peek), showMenu,
+// modal, confirmBox, toast }.
 export function initViews(h) {
   host = h;
-  // Delete removes the selected notes (after asking), Escape clears the selection
+  // Delete removes the selected notes (after asking), Escape clears the selection, or else leaves
+  // the focus mode (a peek over it closes first: see notes.js)
   addEventListener('keydown', e => {
-    if (e.defaultPrevented || e.target.closest?.('input, textarea, [contenteditable="true"]')) return;
-    if ($('#modal-root').childElementCount || !$('#menu').hidden || picker) return;
+    if (e.defaultPrevented || $('#modal-root').childElementCount || !$('#menu').hidden || picker) return;
+    const f = [...mounted].find(x => x.focused && x.el.isConnected);
+    if (e.target.closest?.('input, textarea, [contenteditable="true"]')) {
+      // (the text of the page behind a view in focus mode, which a click in the view can focus, is not
+      // being typed)
+      if (!f || e.key !== 'Escape' || e.target.closest('input, textarea') || f.el.contains(e.target)) return;
+    }
     const c = [...mounted].find(x => x.el.isConnected && x.sel?.size);
-    if (!c) return;
     // (Escape is taken here, so it doesn't also close a peek)
-    if (e.key === 'Escape') { e.preventDefault(); select(c, []); }
-    else if (e.key === 'Delete') { e.preventDefault(); host.deleteNotes(selection(c)); }
+    if (c && e.key === 'Escape') { e.preventDefault(); return select(c, []); }
+    if (c && e.key === 'Delete') { e.preventDefault(); return host.deleteNotes(selection(c)); }
+    if (f && e.key === 'Escape' && $('#peek').hidden) { e.preventDefault(); setFocused(f, false); }
   });
+  addEventListener('resize', placeFocus);
 }
 
 export const TYPES = {
@@ -50,24 +58,29 @@ const editing = el => {
 };
 
 // An input that edits a value in place: Enter or a click elsewhere saves, Escape cancels.
-// `save(text)` is called when it was changed; the views repaint either way.
-function inlineInput(cell, input, initial, save) {
+// `save(text)` is called when it was changed; the views repaint either way. With `done(how, text)`
+// ('enter', 'escape' or 'blur'), that decides instead (see typeTitle).
+function inlineInput(cell, input, initial, save, done = null) {
   cell.classList.add('editing');
   cell.replaceChildren(input);
   input.focus();
   if (input.type === 'text') input.select();
-  const finish = keep => {
+  const finish = how => {
     if (input.dataset.done) return;
     input.dataset.done = '1';
     input.blur();
-    if (keep && input.value.trim() !== initial) save(input.value.trim());
+    if (done) done(how, input.value.trim());
+    else if (how !== 'escape' && input.value.trim() !== initial) save(input.value.trim());
     else repaintViews();
   };
   input.addEventListener('keydown', e => {
-    if (e.key === 'Enter') { e.preventDefault(); finish(true); }
-    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); }
+    if (e.key === 'Enter') { e.preventDefault(); finish('enter'); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish('escape'); }
   });
-  input.addEventListener('blur', () => finish(true));
+  // clicks in it stay in it (they don't open the note, or start another edit)
+  for (const ev of ['click', 'mousedown', 'dblclick']) input.addEventListener(ev, e => e.stopPropagation());
+  // (not when the window loses the focus: the typing goes on when it comes back)
+  input.addEventListener('blur', () => { if (document.hasFocus()) finish('blur'); });
 }
 
 // =====================================================================
@@ -119,8 +132,8 @@ function editValue(cell, id, p) {
   });
 }
 
-// A note's title edited in a table cell.
-function editTitle(cell, id) {
+// A note's title edited in a table cell (or a row of a list).
+function editTitle(cell, id, done = null) {
   const n = S.getNote(id);
   if (!n) return;
   const input = document.createElement('input');
@@ -128,7 +141,7 @@ function editTitle(cell, id) {
   input.spellcheck = false;
   input.placeholder = 'Untitled';
   input.value = n.title;
-  inlineInput(cell, input, n.title, text => S.renameNote(id, text));
+  inlineInput(cell, input, n.title, text => S.renameNote(id, text), done);
 }
 
 // ---------- the option picker of select and multi-select values ----------
@@ -519,7 +532,31 @@ export function renderCollection(el, opts) {
     bindCollection(c);
   }
   Object.assign(c, opts);
+  // in focus mode, the items open as the database says for it (Ctrl+click: a new tab, as always)
+  c.open = (id, e, from) => (c.focused && !(e?.ctrlKey || e?.metaKey) ? host.peek(id, focusOpenOf(c.parent)) : opts.open(id, e, from));
   paint(c);
+}
+
+// Focus mode: a view takes the whole window but the tab bar (`cv-focus`), until Escape or its
+// button; not kept. Its items open in a peek, the database's choice for it (`focusOpen`: 'side' or
+// 'center', the default).
+const FOCUS_OPEN = { center: 'Center peek', side: 'Side peek' };
+const focusOpenOf = id => S.getNote(id)?.focusOpen || 'center';
+
+function setFocused(c, on) {
+  c.focused = on;
+  c.el.classList.toggle('cv-focus', on);
+  if (on) placeFocus();
+  paint(c); // (its button changes, and a canvas fits the room it has now)
+}
+
+// Where the focus mode starts: under the tab bar (none on a phone), whose side the rail is on is
+// covered too.
+function placeFocus() {
+  const top = document.getElementById('titlebar')?.getBoundingClientRect().bottom || 0;
+  const rail = document.getElementById('rail')?.getBoundingClientRect().right || 0;
+  document.documentElement.style.setProperty('--focus-top', `${top}px`);
+  document.documentElement.style.setProperty('--focus-rail', `${top ? rail : 0}px`);
 }
 
 // After notes or collections changed; the ones being typed in wait until the typing ends.
@@ -560,7 +597,8 @@ function paint(c) {
       <div class="cv-tabs">${col.views.map(v => `<button class="cv-tab ${v === view ? 'on' : ''}" data-view="${v.id}">${icon(v.icon || VIEWS[v.type][1])}<span>${esc(v.name)}</span></button>`).join('')}
         <button class="cv-btn" data-cv="add-view" title="Add a view">${icon('plus')}</button></div>
       <span class="spacer"></span>
-      ${c.ctx === 'page' ? `<button class="cv-btn" data-cv="focus" title="${focusedDb(c.parent) ? 'Show the title again' : 'Full screen: hide the icon and the title, so the views take the page'}">${icon(focusedDb(c.parent) ? 'shrink' : 'expand')}</button>` : ''}
+      <button class="cv-btn" data-cv="focus-mode" title="${c.focused ? 'Leave the focus mode (Esc)' : 'Focus mode: the view takes the whole window'}">${icon(c.focused ? 'unfocus' : 'focus')}</button>
+      ${c.ctx === 'page' && !c.focused ? `<button class="cv-btn" data-cv="focus" title="${focusedDb(c.parent) ? 'Show the title again' : 'Full screen: hide the icon and the title, so the views take the page'}">${icon(focusedDb(c.parent) ? 'shrink' : 'expand')}</button>` : ''}
       <button class="cv-btn" data-cv="view-menu" title="View options">${icon('more')}</button>
       <button class="btn-sm" data-cv="new">${icon('plus')}New</button>
     </div>
@@ -568,14 +606,17 @@ function paint(c) {
   </div>`;
   const body = $('.cv-body', c.el);
   if (view.type === 'list') {
-    if (notes.length || c.ctx === 'panel') host.mountTree(body, c.space, { parent: c.parent, open: c.open });
-    else body.innerHTML = '<div class="cv-empty">No sub-pages yet</div>';
+    // (with a "New" at its end, like the table's: the item's title is typed in its row)
+    body.innerHTML = `<div class="cv-tree"></div><button class="vt-new" data-cv="new-row">${icon('plus')}New</button>`;
+    if (notes.length || c.ctx === 'panel') host.mountTree($('.cv-tree', body), c.space, { parent: c.parent, open: c.open });
+    else $('.cv-tree', body).innerHTML = '<div class="cv-empty">No items yet</div>';
   } else if (view.type === 'table') {
     body.innerHTML = tableHtml(col, view, notes);
   } else if (view.type === 'canvas') {
     mountCanvas(body, c, { key, view, items: notes, host, repaint: () => paint(c), focus: focused });
   } else {
     body.innerHTML = boardHtml(col, view, notes);
+    if (view.stretch) fillSnippets(c, notes);
   }
   SCROLLERS.forEach((sel, i) => {
     const x = scrolled[i] && $(sel, c.el);
@@ -655,7 +696,7 @@ function bulkMenu(c, x, y) {
   host.showMenu(x, y, [
     { label: `${ids.length} notes selected`, disabled: true, run: () => {} },
     '-',
-    ...col.schema.map(p => ({ label: `Set ${p.name}…`, run: () => bulkEdit(ids, key, p, x, y) })),
+    ...col.schema.map(p => p.type === 'checkbox' ? { label: `Set ${p.name}`, items: () => checkItems(ids, p) } : { label: `Set ${p.name}…`, run: () => bulkEdit(ids, key, p, x, y) }),
     ...(col.schema.length ? ['-'] : []),
     { label: `Open ${ids.length} notes in tabs`, run: () => ids.forEach(id => c.open(id, { ctrlKey: true }, 'table')) },
     { label: 'Clear the selection', run: () => select(c, []) },
@@ -664,18 +705,18 @@ function bulkMenu(c, x, y) {
   ]);
 }
 
+const checkItems = (ids, p) => [
+  { label: 'Check all', run: () => setAll(ids, p.id, () => true) },
+  { label: 'Uncheck all', run: () => setAll(ids, p.id, () => null) },
+];
+
 // One value of a property for several notes: the pickers of options and branches take them all,
 // checkboxes are checked or unchecked, the other types ask for the value.
 function bulkEdit(ids, key, p, x, y) {
   const at = { getBoundingClientRect: () => ({ left: x, right: x, top: y, bottom: y }) };
   if (hasOptions(p)) return optionPicker(at, key, p.id, ids);
   if (p.type === 'branch') return branchPicker(at, p.id, ids);
-  if (p.type === 'checkbox') {
-    return host.showMenu(x, y, [
-      { label: 'Check all', run: () => setAll(ids, p.id, () => true) },
-      { label: 'Uncheck all', run: () => setAll(ids, p.id, () => null) },
-    ]);
-  }
+  if (p.type === 'checkbox') return host.showMenu(x, y, checkItems(ids, p));
   const hint = { date: 'YYYY-MM-DD', number: 'A number', url: 'https://…' }[p.type] || '';
   host.modal({ title: `Set ${p.name}`, message: `For ${ids.length} notes. Leave it empty to clear it.`, input: '', placeholder: hint, allowEmpty: true, ok: 'Set' }).then(r => {
     if (!r) return;
@@ -729,8 +770,21 @@ function tableHtml(col, view, notes) {
 
 // ---------- board ----------
 
+// The start of the items' text, shown on the post-its of a stretched board (as each page is read).
+const snippets = new Map(); // id -> { updated, text }
+function fillSnippets(c, notes) {
+  for (const n of notes) {
+    if (n.kind === 'database') continue;
+    const put = p => { const el = c.el.querySelector(`.bd-card[data-note="${CSS.escape(n.id)}"] .bd-sx`); if (el) el.textContent = p?.text || ''; };
+    const hit = snippets.get(n.id);
+    if (hit?.updated === n.updated) put(hit);
+    else host.preview(n.id).then(p => { snippets.set(n.id, p); put(p); }, () => {});
+  }
+}
+
 // The pencil of a card: its title is edited right there (Enter or leaving it saves, Escape doesn't).
-function renameCard(card, id) {
+// With `done(how, text)` ('enter', 'escape' or 'blur'), that decides instead (see typeTitle).
+function renameCard(card, id, done = null) {
   const t = card?.querySelector('.bd-ct');
   if (!t) return;
   const input = Object.assign(document.createElement('textarea'), { className: 'bd-ct-edit', value: S.getNote(id)?.title || '', rows: 1, placeholder: 'Untitled' });
@@ -738,22 +792,24 @@ function renameCard(card, id) {
   card.draggable = false;
   card.classList.add('renaming');
   const fit = () => { input.style.height = 'auto'; input.style.height = input.scrollHeight + 'px'; };
-  let done = false;
-  const finish = save => {
-    if (done) return;
-    done = true;
+  let finished = false;
+  const finish = how => {
+    if (finished) return;
+    finished = true;
     const v = input.value.trim();
     input.blur(); // (repaints wait while it has the focus)
-    if (save && v !== (S.getNote(id)?.title || '')) S.renameNote(id, v);
+    if (done) done(how, v);
+    else if (how !== 'escape' && v !== (S.getNote(id)?.title || '')) S.renameNote(id, v);
     else repaintViews();
   };
   input.addEventListener('input', fit);
   input.addEventListener('keydown', e => {
     e.stopPropagation();
-    if (e.key === 'Enter') { e.preventDefault(); finish(true); }
-    else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+    if (e.key === 'Enter') { e.preventDefault(); finish('enter'); }
+    else if (e.key === 'Escape') { e.preventDefault(); finish('escape'); }
   });
-  input.addEventListener('blur', () => finish(true));
+  // (not when the window loses the focus: the typing goes on when it comes back)
+  input.addEventListener('blur', () => { if (document.hasFocus()) finish('blur'); });
   // clicks in it stay in it (they don't open the note)
   for (const ev of ['click', 'mousedown', 'pointerdown']) input.addEventListener(ev, e => e.stopPropagation());
   fit();
@@ -779,7 +835,7 @@ function boardHtml(col, view, notes) {
       return `<div class="bd-prop pt-${p.type}">${p.type === 'checkbox' ? `${valueHtml(p, v)}<span>${esc(p.name)}</span>` : valueHtml(p, v)}</div>`;
     }).join('');
     return `<div class="bd-card" data-note="${n.id}" draggable="true"><div class="bd-ct ${n.title ? '' : 'untitled'}">${n.icon || n.kind === 'database' ? icon(itemIcon(n), 'bd-ic') : ''}${esc(n.title || 'Untitled')}</div>${props}
-      <button class="cv-btn bd-edit" data-cv="rename-card" title="Rename">${icon('pencil')}</button></div>`;
+      ${view.stretch && n.kind !== 'database' ? '<div class="bd-sx"></div>' : ''}<button class="cv-btn bd-edit" data-cv="rename-card" title="Rename">${icon('pencil')}</button></div>`;
   };
   const label = o => (o ? chip(o) : `<span class="opt c-none">No ${esc(g.name)}</span>`);
   const column = (o, cards) => `<div class="bd-col" data-group="${o?.id || ''}">
@@ -792,7 +848,8 @@ function boardHtml(col, view, notes) {
   const pinned = new Set(view.pinned || []);
   const groups = [...(cardsOf(null).length ? [null] : []), ...g.options];
   const pins = groups.filter(o => pinned.has(o?.id ?? ''));
-  return `<div class="bd">${groups.filter(o => !pinned.has(o?.id ?? '')).map(o => column(o, cardsOf(o?.id ?? null))).join('')}
+  // (stretched: the columns share the width, and a wide one shows its cards as post-its, side by side)
+  return `<div class="bd ${view.stretch ? 'bd-stretch' : ''}">${groups.filter(o => !pinned.has(o?.id ?? '')).map(o => column(o, cardsOf(o?.id ?? null))).join('')}
     <button class="bd-addcol" data-cv="add-group">${icon('plus')}Add a group</button>
     ${pins.length ? `<div class="bd-pinned"><div class="bd-pinned-head">${icon('pin')}Pinned groups</div>
       ${pins.map(o => `<div class="bd-pin-row" data-group="${o?.id ?? ''}" data-cv="pinned-group" title="Show its notes">${label(o)}<span class="bd-n">${cardsOf(o?.id ?? null).length}</span>
@@ -863,6 +920,8 @@ function viewMenu(x, y, key, c) {
     { label: 'Rename view…', run: async () => { const r = await host.modal({ title: 'Rename view', input: view.name, ok: 'Rename' }); if (r) S.updateView(key, view.id, { name: r.value }); } },
     { label: view.icon ? 'Change icon…' : 'Add icon…', run: r => pickEmoji(r, view.icon, e => S.updateView(key, view.id, { icon: e })) },
     ...(view.type === 'board' && selects.length > 1 ? ['-', ...selects.map(p => ({ label: `Group by ${p.name}${g?.id === p.id ? '  ✓' : ''}`, run: () => S.updateView(key, view.id, { groupBy: p.id }) }))] : []),
+    // (the columns share the width; wide ones show their cards as post-its, side by side)
+    ...(view.type === 'board' ? ['-', { label: `Stretch the columns${view.stretch ? '  ✓' : ''}`, run: () => S.updateView(key, view.id, { stretch: view.stretch ? null : true }) }] : []),
     ...(view.type === 'canvas' ? ['-', ...canvasMenuItems(c, key, view, host)] : []),
     ...((view.type === 'table' || view.type === 'board') && col.schema.length ? ['-', ...col.schema.filter(p => p.id !== g?.id).map(p => {
       const hidden = view.hidden?.includes(p.id);
@@ -870,7 +929,11 @@ function viewMenu(x, y, key, c) {
     })] : []),
     '-',
     { label: 'Add a property…', run: () => addProperty(x, y, key) },
-    ...(S.isDatabase(key) ? [{ label: 'Open items in…', run: r => host.showMenu(r.left, r.top, host.openInMenu(key)) }] : []),
+    ...(S.isDatabase(key) ? [
+      { label: 'Open items in', items: () => host.openInMenu(key) },
+      { label: 'Open items in focus mode', items: () => Object.entries(FOCUS_OPEN).map(([m, name]) => ({ label: `${name}${focusOpenOf(key) === m ? '  ✓' : ''}`, run: () => S.setFocusOpen(key, m) })) },
+    ] : []),
+    { label: c.focused ? 'Leave the focus mode  (Esc)' : 'Focus mode', run: () => setFocused(c, !c.focused) },
     ...(view.type === 'board' && view.pinned?.length ? [{ label: 'Unpin all groups', run: () => S.updateView(key, view.id, { pinned: null }) }] : []),
     // a database in a page's text can take the page's whole width (the text keeps its column)
     ...(ctx === 'inline' && page ? [{ label: `Full-width databases on this page${S.wideViewsOf(page.id) ? '  ✓' : ''}`, run: () => S.setWideViews(page.id, !S.wideViewsOf(page.id)) }] : []),
@@ -912,6 +975,7 @@ function bindCollection(c) {
       case 'add-view': return host.showMenu(r.left, r.bottom + 4, Object.entries(VIEWS).map(([t, [name]]) => ({ label: `${name} view`, run: () => addView(key, t) })));
       case 'view-menu': return viewMenu(r.right - 220, r.bottom + 4, key, c);
       case 'focus': return toggleFocus(c);
+      case 'focus-mode': return setFocused(c, !c.focused);
       case 'new':
         if (view.type === 'table') return newRow(c);
         if (view.type === 'board') { const g = groupProp(col, view); return c.create(g?.options[0] ? { [g.id]: g.options[0].id } : {}); }
@@ -1011,7 +1075,12 @@ function bindCollection(c) {
     const colEl = e.target.closest('.bd-col');
     if (!colEl) return null;
     const cards = [...colEl.querySelectorAll('.bd-card')].filter(x => !dragging.includes(x.dataset.note));
-    const before = cards.find(x => { const r = x.getBoundingClientRect(); return e.clientY < r.top + r.height / 2; }) || null;
+    // (post-its side by side: the first one after the pointer, row by row)
+    const grid = getComputedStyle(colEl.querySelector('.bd-cards')).display === 'grid';
+    const before = cards.find(x => {
+      const r = x.getBoundingClientRect();
+      return grid ? e.clientY < r.top || (e.clientY < r.bottom && e.clientX < r.left + r.width / 2) : e.clientY < r.top + r.height / 2;
+    }) || null;
     return { colEl, before, last: cards[cards.length - 1] || null };
   };
   el.addEventListener('dragstart', e => {
@@ -1128,13 +1197,36 @@ function newMenu(c, btn, x, y) {
   ]);
 }
 
-// A new item that didn't open: its title is typed on its card or in its row.
+// A new item that didn't open: its title is typed on its card or in its row (of a table or a list).
+// Enter keeps it and adds the next one right below it (in the same column), typed the same way;
+// Escape or an empty title takes the new item away (for good: it has nothing yet).
 function typeTitle(c, n) {
   if (!n) return;
-  const card = c.el.querySelector(`.bd-card[data-note="${CSS.escape(n.id)}"]`);
-  if (card) return renameCard(card, n.id);
-  const cell = c.el.querySelector(`tr[data-note="${CSS.escape(n.id)}"] .vt-tt`);
-  if (cell) editTitle(cell, n.id);
+  const done = (how, text) => {
+    if (!S.getNote(n.id)) return repaintViews();
+    if (how === 'escape' || !text) return S.deleteForever(n.id);
+    S.renameNote(n.id, text);
+    if (how === 'enter') addBelow(c, n.id);
+  };
+  const at = CSS.escape(n.id);
+  const card = c.el.querySelector(`.bd-card[data-note="${at}"]`);
+  if (card) return renameCard(card, n.id, done);
+  const cell = c.el.querySelector(`tr[data-note="${at}"] .vt-tt, .nt-row[data-note="${at}"] .nt-title`);
+  if (cell) {
+    cell.closest('.nt-row')?.setAttribute('draggable', 'false');
+    editTitle(cell, n.id, done);
+  }
+}
+
+// A new item right after `id`, in its column on a board.
+function addBelow(c, id) {
+  const key = S.collectionKey(c.space, c.parent), col = S.getCollection(key), view = activeView(col);
+  const g = view.type === 'board' ? groupProp(col, view) : null, group = g && S.getNote(id)?.props?.[g.id];
+  const siblings = S.childrenOf(c.space, c.parent);
+  const next = siblings[siblings.findIndex(s => s.id === id) + 1]?.id ?? null;
+  const n = c.create(group ? { [g.id]: group } : {}, 'none');
+  if (n && next) S.moveNote(n.id, n.parent ?? null, next);
+  typeTitle(c, n);
 }
 
 // The icon of an item: its own, or a database's or a page's.

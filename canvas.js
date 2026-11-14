@@ -10,8 +10,8 @@
 // free spot below what is there) unless they were hidden from it (`off`); hiding an item's last
 // copy hides the item. Delete deletes what is selected (items to the trash, after a prompt), and F
 // frames it. Where the canvas is looked at (moved and zoomed) is kept on this device only.
-import * as S from './notes-store.js?v=2abb843';
-import { esc, icon, store, glider, plural } from './util.js?v=2abb843';
+import * as S from './notes-store.js?v=262b7c4';
+import { esc, icon, store, glider, plural } from './util.js?v=262b7c4';
 
 const newId = () => crypto.randomUUID?.() ?? Date.now().toString(36) + Math.random().toString(36).slice(2);
 const clone = v => JSON.parse(JSON.stringify(v ?? null));
@@ -122,7 +122,7 @@ export function canvasMenuItems(c, key, view, host) {
   const api = c.canvas?.view === view.id ? c.canvas.api : null;
   const look = view.look || 'box';
   return [
-    { label: 'New items look like…', run: r => host.showMenu(r.right + 2, r.top, LOOKS.map(s => ({ label: `${SHAPES[s]}${look === s ? '  ✓' : ''}`, run: () => S.updateView(key, view.id, { look: s }) }))) },
+    { label: 'New items look like', items: () => LOOKS.map(s => ({ label: `${SHAPES[s]}${look === s ? '  ✓' : ''}`, run: () => S.updateView(key, view.id, { look: s }) })) },
     { label: `Snap to the grid${view.snap ? '  ✓' : ''}`, run: () => S.updateView(key, view.id, { snap: view.snap ? null : true }) },
     ...(api ? [
       { label: 'Fit to content', run: () => api.fit({ smooth: true }) },
@@ -163,7 +163,7 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
   const snap = v => (snapOn() ? Math.round(v / GRID) * GRID : Math.round(v));
   const snapSize = v => (snapOn() ? Math.max(GRID, Math.round(v / GRID) * GRID) : Math.round(v));
 
-  body.innerHTML = `<div class="cvs cvs-${c.ctx === 'page' ? 'page' : 'inline'} ${cv.active ? 'active' : ''} ${tray ? 'tray-open' : ''}" tabindex="0">
+  body.innerHTML = `<div class="cvs cvs-${c.ctx === 'page' || c.focused ? 'page' : 'inline'} ${cv.active ? 'active' : ''} ${tray ? 'tray-open' : ''}" tabindex="0">
     <div class="cvs-world">
       <svg class="cvs-edges" xmlns="http://www.w3.org/2000/svg"></svg>
       ${nodes.map(n => nodeHtml(n, n.note ? byId.get(n.note) : null, copies.get(n.note))).join('')}
@@ -993,7 +993,7 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
   });
 
   root.addEventListener('wheel', e => {
-    if (c.ctx !== 'page' && !cv.active) return; // (the page scrolls)
+    if (c.ctx !== 'page' && !c.focused && !cv.active) return; // (the page scrolls)
     if (e.target.closest('.cvs-tray')) return;
     e.preventDefault();
     e.stopPropagation();
@@ -1063,10 +1063,9 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
   function nodeMenu(x, y, id) {
     if (!cv.sel.has(id)) select([id]);
     const ids = [...cv.sel];
-    const sub = items => r => host.showMenu(r.right + 2, r.top, items);
     const common = [
-      { label: 'Look…', run: sub(lookItems(ids)) },
-      { label: 'Color…', run: sub(colorItems(ids)) },
+      { label: 'Look', items: () => lookItems(ids) },
+      { label: 'Color', items: () => colorItems(ids) },
       { label: 'Duplicate  (Ctrl+D)', run: () => duplicate(ids) },
       { label: 'Bring to front', run: () => toFront(ids, true) },
       { label: 'Send to back', run: () => toFront(ids, false) },
@@ -1305,8 +1304,9 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
 
   // ---------- ready ----------
 
-  // A database opened on its own: the canvas goes down to the bottom of what shows the page.
-  const scroller = c.ctx === 'page' ? scrollParent(root) : null;
+  // A database opened on its own: the canvas goes down to the bottom of what shows the page (in
+  // focus mode, it fills the window).
+  const scroller = c.ctx === 'page' && !c.focused ? scrollParent(root) : null;
   const height = () => {
     if (!scroller) return;
     const top = root.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;

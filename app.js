@@ -1,20 +1,20 @@
-import * as G from './git.js?v=2abb843';
-import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=2abb843';
-import { renderDiff, renderSubmodule, parseSubmoduleLog, loadSizes } from './diff.js?v=2abb843';
-import { loadMedia } from './media-diff.js?v=2abb843';
-import { partialPatch } from './patch.js?v=2abb843';
-import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=2abb843';
-import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=2abb843';
-import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=2abb843';
-import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=2abb843';
-import * as P from './projects.js?v=2abb843';
-import { syncStatus, onSyncStatus } from './mirror.js?v=2abb843';
-import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=2abb843';
-import * as S from './notes-store.js?v=2abb843';
-import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=2abb843';
-import * as M from './mobile.js?v=2abb843';
-import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=2abb843';
-import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=2abb843';
+import * as G from './git.js?v=262b7c4';
+import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=262b7c4';
+import { renderDiff, renderSubmodule, parseSubmoduleLog, loadSizes } from './diff.js?v=262b7c4';
+import { loadMedia } from './media-diff.js?v=262b7c4';
+import { partialPatch } from './patch.js?v=262b7c4';
+import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=262b7c4';
+import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=262b7c4';
+import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=262b7c4';
+import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=262b7c4';
+import * as P from './projects.js?v=262b7c4';
+import { syncStatus, onSyncStatus } from './mirror.js?v=262b7c4';
+import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=262b7c4';
+import * as S from './notes-store.js?v=262b7c4';
+import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=262b7c4';
+import * as M from './mobile.js?v=262b7c4';
+import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=262b7c4';
+import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, databaseKinds, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=262b7c4';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -63,41 +63,111 @@ function toast(msg, type = 'info', detail = '', action = null) {
   setTimeout(() => el.remove(), type === 'error' ? 12000 : type === 'warn' || action ? 8000 : 3500);
 }
 
-// An item's `run` gets where the item was on the screen (to open more choices there).
+// An item's `run` gets where the item was on the screen (to open more choices there). An item with
+// `items` (a list, or a function that makes it) opens them in a submenu next to it, on the right or
+// on the left, where there is room (on hover, or on a click or a touch); submenus nest.
 // A menu opened from a button (the one pressed last) stays next to it: one its caller right-aligns
 // to the button goes against the button's right edge whatever the menu's width, and none leaves the
 // window. Pressing the button again closes it.
 let pressed = null, pressedAt = 0, menuFrom = null, closing = null;
+let subs = [], subTimer = 0; // the submenus open, each one a level deeper than the one before
 
-function showMenu(x, y, items) {
-  const from = pressed?.isConnected && Date.now() - pressedAt < 2000 ? pressed : null;
-  if (from && from === closing) { closing = null; return; }
-  // (separators only between items: none at the ends, or two in a row when a part was left out)
+// (separators only between items: none at the ends, or two in a row when a part was left out)
+function tidyItems(items) {
   items = items.reduce((out, it) => {
     if (it !== '-' ? it.label : out.length && out.at(-1) !== '-') out.push(it);
     return out;
   }, []);
   if (items.at(-1) === '-') items.pop();
+  return items;
+}
+
+const menuHtml = items => items.map((it, i) => it === '-' ? '<div class="mi-sep"></div>'
+  : it.items ? `<div class="mi mi-sub ${it.disabled ? 'disabled' : ''}" data-i="${i}"><span class="mi-l">${esc(it.label)}</span>${icon('chevron', 'mi-arrow')}</div>`
+  : `<div class="mi ${it.danger ? 'danger' : ''} ${it.disabled ? 'disabled' : ''}" data-i="${i}">${esc(it.label)}</div>`).join('');
+
+function showMenu(x, y, items) {
+  const from = pressed?.isConnected && Date.now() - pressedAt < 2000 ? pressed : null;
+  if (from && from === closing) { closing = null; return; }
+  closeSubs(0);
+  items = tidyItems(items);
   const m = $('#menu');
-  m.innerHTML = items.map((it, i) => it === '-' ? '<div class="mi-sep"></div>'
-    : `<div class="mi ${it.danger ? 'danger' : ''} ${it.disabled ? 'disabled' : ''}" data-i="${i}">${esc(it.label)}</div>`).join('');
+  m.innerHTML = menuHtml(items);
   m.hidden = false;
   const r = m.getBoundingClientRect(), a = from?.getBoundingClientRect();
   if (a && x < a.left) x = a.right - r.width;
   m.style.left = Math.max(6, Math.min(x, innerWidth - r.width - 6)) + 'px';
   m.style.top = Math.max(6, Math.min(y, innerHeight - r.height - 6)) + 'px';
   menuFrom = from;
+  bindMenu(m, items, 0);
+}
+
+// `level`: where the submenus of this menu go in `subs`.
+function bindMenu(m, items, level) {
   m.onclick = e => {
     const mi = e.target.closest('.mi');
-    if (!mi) return;
+    if (!mi || mi.classList.contains('disabled')) return;
+    const it = items[+mi.dataset.i];
+    if (it.items) return openSub(level, mi, it);
     const r = mi.getBoundingClientRect();
     hideMenu();
-    items[+mi.dataset.i].run(r);
+    it.run(r);
   };
+  // hovering an item opens its submenu, or (a bit later, so the pointer can cross other items on
+  // its way to a submenu) closes the one that is open
+  m.onmouseover = e => {
+    const mi = e.target.closest('.mi');
+    if (!mi || mi === m._hover) return;
+    m._hover = mi;
+    clearTimeout(subTimer);
+    const it = items[+mi.dataset.i];
+    if (subs[level]?._from === mi) return;
+    const sub = it?.items && !mi.classList.contains('disabled');
+    subTimer = setTimeout(() => (sub ? openSub(level, mi, it) : closeSubs(level)), sub ? 120 : 260);
+  };
+  m.onmouseleave = () => { m._hover = null; };
+  // (reaching a submenu keeps it)
+  m.onmouseenter = () => { if (level) clearTimeout(subTimer); };
 }
-const hideMenu = () => ($('#menu').hidden = true);
+
+function openSub(level, mi, it) {
+  clearTimeout(subTimer);
+  if (subs[level]?._from === mi) return;
+  closeSubs(level);
+  const items = tidyItems(typeof it.items === 'function' ? it.items() : it.items);
+  const m = document.createElement('div');
+  m.className = 'menu menu-sub';
+  m.innerHTML = menuHtml(items);
+  document.body.append(m);
+  m._from = mi;
+  mi.classList.add('open');
+  subs[level] = m;
+  // on the right of its menu, else on the left, else (a narrow window) over it, under the item
+  const p = mi.closest('#menu, .menu').getBoundingClientRect(), r = mi.getBoundingClientRect();
+  const w = m.offsetWidth, h = m.offsetHeight;
+  let x = p.right - 3, y = r.top - 5;
+  if (x + w > innerWidth - 6) x = p.left - w + 3;
+  if (x < 6) { x = Math.min(r.left + 24, innerWidth - w - 6); y = r.bottom + 2; }
+  m.style.left = Math.max(6, x) + 'px';
+  m.style.top = Math.max(6, Math.min(y, innerHeight - h - 6)) + 'px';
+  bindMenu(m, items, level + 1);
+}
+
+// Closes the submenus from `level` on.
+function closeSubs(level) {
+  for (const m of subs.splice(level)) {
+    m._from?.classList.remove('open');
+    m.remove();
+  }
+}
+
+const hideMenu = () => {
+  clearTimeout(subTimer);
+  closeSubs(0);
+  $('#menu').hidden = true;
+};
 window.addEventListener('pointerdown', e => {
-  if (e.target.closest('#menu')) return;
+  if (e.target.closest('#menu, .menu')) return;
   pressed = e.button === 0 ? e.target.closest('button, [data-cv], [data-nt], [data-act], [data-mb], [data-np]') : null;
   pressedAt = Date.now();
   closing = !$('#menu').hidden && pressed && pressed === menuFrom ? pressed : null;
@@ -755,7 +825,7 @@ function newTabMenu(x, y, extra = []) {
   const item = (p, run) => ({ label: `${folderName(p)}  —  ${p}`, run });
   const notes = [
     { label: 'New page', run: () => newNote({ space: tabs.space, open: 'tab' }) },
-    { label: 'New database', run: () => newDatabase({ space: tabs.space, open: 'tab' }) },
+    { label: 'New database', items: () => databaseKinds(view => newDatabase({ space: tabs.space, view, open: 'tab' })) },
   ];
   if (!desktop) return showMenu(x, y, [...notes, ...extra]);
   showMenu(x, y, [
@@ -3236,8 +3306,11 @@ function makeSplitter(sp, key) {
   const sign = next ? -1 : 1, min = +sp.dataset.min || 140;
   const saved = store('split.' + key);
   if (saved) target.style[vertical ? 'width' : 'height'] = saved + 'px';
-  sp.addEventListener('mousedown', e => {
+  // (pointer events, held by the splitter: a finger or a pen drags it too)
+  sp.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
     e.preventDefault();
+    try { sp.setPointerCapture(e.pointerId); } catch {}
     const start = vertical ? e.clientX : e.clientY;
     const startSize = vertical ? target.offsetWidth : target.offsetHeight;
     const parent = target.parentElement;
@@ -3251,12 +3324,14 @@ function makeSplitter(sp, key) {
     const up = () => {
       sp.classList.remove('dragging');
       document.body.style.cursor = '';
-      window.removeEventListener('mousemove', move);
-      window.removeEventListener('mouseup', up);
+      sp.removeEventListener('pointermove', move);
+      sp.removeEventListener('pointerup', up);
+      sp.removeEventListener('pointercancel', up);
       store('split.' + key, vertical ? target.offsetWidth : target.offsetHeight);
     };
-    window.addEventListener('mousemove', move);
-    window.addEventListener('mouseup', up);
+    sp.addEventListener('pointermove', move);
+    sp.addEventListener('pointerup', up);
+    sp.addEventListener('pointercancel', up);
   });
 }
 
