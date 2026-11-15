@@ -5,17 +5,17 @@
 // below as it was. Pages nest in other pages through their text (a link to the nested page, or a
 // database block); databases show in the tree as one item. Tabs and spaces belong to app.js (see
 // initNotesUi); the table, board and canvas views and the properties are in views.js (and canvas.js).
-import * as S from './notes-store.js?v=ffc59df';
-import * as G from './git.js?v=ffc59df';
-import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=ffc59df';
-import { openImageViewer, copyImage } from './image-viewer.js?v=ffc59df';
-import { pickEmoji } from './emoji.js?v=ffc59df';
-import { toMarkdown } from './markdown.js?v=ffc59df';
-import { sharedPath } from './projects.js?v=ffc59df';
-import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView, focusedDb } from './views.js?v=ffc59df';
-import { importNotion } from './notion-import.js?v=ffc59df';
-import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative, fmtSize } from './util.js?v=ffc59df';
-import { desktop, invoke, isMobile } from './platform.js?v=ffc59df';
+import * as S from './notes-store.js?v=0bec238';
+import * as G from './git.js?v=0bec238';
+import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=0bec238';
+import { openImageViewer, copyImage } from './image-viewer.js?v=0bec238';
+import { pickEmoji } from './emoji.js?v=0bec238';
+import { toMarkdown } from './markdown.js?v=0bec238';
+import { sharedPath } from './projects.js?v=0bec238';
+import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView, focusedDb } from './views.js?v=0bec238';
+import { importNotion } from './notion-import.js?v=0bec238';
+import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative, fmtSize } from './util.js?v=0bec238';
+import { desktop, invoke, isMobile } from './platform.js?v=0bec238';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;

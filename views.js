@@ -3,13 +3,13 @@
 // cards dragged between them) or a canvas (cards put anywhere, see canvas.js). Also the properties
 // block of an item's page, which shares the value editors with the table.
 // A Branch property links a note to a branch of one of the space's repositories (notes as tasks).
-import * as S from './notes-store.js?v=ffc59df';
-import * as G from './git.js?v=ffc59df';
-import { esc, icon, folderName, store } from './util.js?v=ffc59df';
-import { desktop } from './platform.js?v=ffc59df';
-import { localPath, sharedPath } from './projects.js?v=ffc59df';
-import { pickEmoji } from './emoji.js?v=ffc59df';
-import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=ffc59df';
+import * as S from './notes-store.js?v=0bec238';
+import * as G from './git.js?v=0bec238';
+import { esc, icon, folderName, store } from './util.js?v=0bec238';
+import { desktop } from './platform.js?v=0bec238';
+import { localPath, sharedPath } from './projects.js?v=0bec238';
+import { pickEmoji } from './emoji.js?v=0bec238';
+import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=0bec238';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -683,6 +683,9 @@ function boxSelect(c, e) {
   const body = e.target.closest('.cv-body');
   if (e.button !== 0 || !body?.matches('.cv-table, .cv-board')) return;
   if (e.target.closest('.bd-card, td:not(.vt-fill), th, button, input, .bd-head, .bd-pin-row, a')) return;
+  // (the drag keeps the focus where it is: a title being typed there ends, like with any click
+  // elsewhere, so a new item left empty goes and one with a title stays)
+  if (editing(c.el)) document.activeElement.blur();
   e.preventDefault();
   const add = e.shiftKey || e.ctrlKey || e.metaKey, base = add ? [...c.sel] : [];
   const x0 = e.clientX, y0 = e.clientY;
