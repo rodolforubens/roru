@@ -5,17 +5,17 @@
 // below as it was. Pages nest in other pages through their text (a link to the nested page, or a
 // database block); databases show in the tree as one item. Tabs and spaces belong to app.js (see
 // initNotesUi); the table, board and canvas views and the properties are in views.js (and canvas.js).
-import * as S from './notes-store.js?v=0bec238';
-import * as G from './git.js?v=0bec238';
-import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=0bec238';
-import { openImageViewer, copyImage } from './image-viewer.js?v=0bec238';
-import { pickEmoji } from './emoji.js?v=0bec238';
-import { toMarkdown } from './markdown.js?v=0bec238';
-import { sharedPath } from './projects.js?v=0bec238';
-import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView, focusedDb } from './views.js?v=0bec238';
-import { importNotion } from './notion-import.js?v=0bec238';
-import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative, fmtSize } from './util.js?v=0bec238';
-import { desktop, invoke, isMobile } from './platform.js?v=0bec238';
+import * as S from './notes-store.js?v=7a0dd56';
+import * as G from './git.js?v=7a0dd56';
+import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=7a0dd56';
+import { openImageViewer, copyImage } from './image-viewer.js?v=7a0dd56';
+import { pickEmoji } from './emoji.js?v=7a0dd56';
+import { toMarkdown } from './markdown.js?v=7a0dd56';
+import { sharedPath } from './projects.js?v=7a0dd56';
+import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView, focusedDb } from './views.js?v=7a0dd56';
+import { importNotion } from './notion-import.js?v=7a0dd56';
+import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative, fmtSize } from './util.js?v=7a0dd56';
+import { desktop, invoke, isMobile } from './platform.js?v=7a0dd56';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -86,13 +86,16 @@ export async function initNotesUi(h) {
     if (e.key !== 'Escape' || e.defaultPrevented || !peek || $('#modal-root').childElementCount || !$('#menu').hidden) return;
     closePeek();
   });
-  // Ctrl+Z puts back the notes moved to the trash last (out of the text being typed, and of the
-  // repositories' tabs)
+  // Ctrl+Z undoes the last change to the notes, Ctrl+Shift+Z or Ctrl+Y does it again (see "undo" in
+  // notes-store.js), out of the text being typed (which has its own) and of the repositories' tabs
   addEventListener('keydown', e => {
-    if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'z' || e.defaultPrevented || !undoable.length) return;
+    if (!(e.ctrlKey || e.metaKey) || e.altKey || e.defaultPrevented) return;
+    const k = e.key.toLowerCase(), redo = (k === 'z' && e.shiftKey) || (k === 'y' && !e.shiftKey);
+    if (k !== 'z' && !redo) return;
     if (e.target.closest?.('input, textarea, [contenteditable="true"]') || $('#modal-root').childElementCount || host.inRepo()) return;
     e.preventDefault();
-    undoDelete();
+    if (redo) S.redo();
+    else undone(S.undo());
   });
 }
 
@@ -210,7 +213,6 @@ async function dropBlocks(dbs) {
 // them back, and the trash (openTrash) restores them later or deletes them for good. The text they
 // are linked or shown in keeps them, shown as deleted until they come back.
 
-const undoable = []; // what was moved to the trash here, the last at the end: { ids, shown ({ id, how }: the note open then) }
 const named = (ids, title = noteTitle) => (ids.length === 1 ? `"${title(ids[0])}"` : plural(ids.length, 'note'));
 const trashedTitle = id => S.trashedNote(id)?.title || 'Untitled';
 
@@ -234,22 +236,17 @@ async function deleteNotes(ids, { confirm = true } = {}) {
   await S.batch(() => { for (const id of ids) gone.push(...S.trashNote(id)); });
   host.closeTabs(gone);
   if (peek && gone.includes(peek.page.id)) closePeek();
-  const entry = { ids, shown };
-  undoable.push(entry);
-  host.toast(`Moved ${what} to the trash`, 'ok', '', { label: 'Undo', run: () => undoDelete(entry) });
+  // (Ctrl+Z or the toast's Undo puts them back, and opens again the one that was open)
+  const change = S.tagLast({ restored: what, shown });
+  host.toast(`Moved ${what} to the trash`, 'ok', '', { label: 'Undo', run: () => undone(S.undo(change)) });
 }
 
-// Puts back what was moved to the trash last (Ctrl+Z), or the given notes (the toast's Undo), and
-// opens again the one that was open.
-async function undoDelete(entry = undoable.at(-1)) {
-  if (!entry || !undoable.includes(entry)) return;
-  undoable.splice(undoable.indexOf(entry), 1);
-  const ids = entry.ids.filter(id => S.trashedNote(id)?.trashed); // (not restored or deleted for good meanwhile)
-  if (!ids.length) return;
-  const what = named(ids, trashedTitle);
-  await S.batch(() => { for (const id of ids) S.restoreNote(id); });
-  host.toast(`Restored ${what}`, 'ok');
-  if (entry.shown && S.getNote(entry.shown.id)) openNote(entry.shown.id, entry.shown.how);
+// After a change was undone: notes put back from the trash say so, and the one that was open opens.
+function undone(change) {
+  const m = change?.meta;
+  if (!m?.restored) return;
+  host.toast(`Restored ${m.restored}`, 'ok');
+  if (m.shown && S.getNote(m.shown.id)) openNote(m.shown.id, m.shown.how);
 }
 
 // Restores a note of the trash; `open` shows it afterwards.

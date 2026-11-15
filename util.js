@@ -1,4 +1,4 @@
-import { invoke } from './platform.js?v=0bec238';
+import { invoke } from './platform.js?v=7a0dd56';
 
 export function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

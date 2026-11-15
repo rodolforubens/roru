@@ -30,11 +30,11 @@
 // A deleted note goes to the trash with what is inside it: it gets `trashed` (when), and it and the
 // notes inside it leave every list (getNote, childrenOf…) until it is restored or deleted for good
 // (see "The trash" below).
-import { desktop, invoke, convertFileSrc } from './platform.js?v=0bec238';
-import { db, currentUser } from './account.js?v=0bec238';
-import { createMirror, clone, reportStatus } from './mirror.js?v=0bec238';
-import { Y, updateYFragment, yDocToProsemirrorJSON } from './vendor/tiptap.js?v=0bec238';
-import { noteSchema, fitToSchema } from './editor.js?v=0bec238';
+import { desktop, invoke, convertFileSrc } from './platform.js?v=7a0dd56';
+import { db, currentUser } from './account.js?v=7a0dd56';
+import { createMirror, clone, reportStatus } from './mirror.js?v=7a0dd56';
+import { Y, updateYFragment, yDocToProsemirrorJSON } from './vendor/tiptap.js?v=7a0dd56';
+import { noteSchema, fitToSchema } from './editor.js?v=7a0dd56';
 
 const SAVE_DELAY = 300; // ms after the last edit (files on this computer)
 
@@ -69,6 +69,9 @@ export async function useAccount(user) {
   notes = [];
   collections = {};
   contents.clear();
+  undone = [];
+  redone = [];
+  base = null;
   if (user && db) {
     mode = 'account';
     mirror.use(user);
@@ -79,6 +82,7 @@ export async function useAccount(user) {
     mirror.use(null);
     mode = desktop ? 'local' : null;
     if (mode === 'local') await loadLocal();
+    rebase();
   }
   tellAll([]);
 }
@@ -231,6 +235,7 @@ function changed(ids = []) {
   if (batching) { batched.push(...ids); return; }
   persist();
   tellAll(ids);
+  willRecord();
 }
 
 const tellAll = (ids, removed = []) => { for (const fn of listeners) fn({ ids, removed }); };
@@ -253,6 +258,153 @@ function run(key) {
 export function flushNotes() {
   for (const key of [...pending.keys()]) run(key);
   for (const d of docs.values()) send(d);
+}
+
+// ---------- undo ----------
+//
+// Ctrl+Z undoes the changes made here to the notes, the last first, and Ctrl+Shift+Z (or Ctrl+Y) does
+// them again (see notes.js). Each change (what changed in one go: a `batch`, or one task) is kept as
+// what its notes and collections were before and after it. Not kept: when notes were edited
+// (`updated`), the view shown (`active`), the changes that came from elsewhere (`build`), the ones the
+// app makes by itself or that can't be undone (`quietly`), and the notes deleted for good, which never
+// come back. Undoing the making of a note takes it away when it has nothing yet, else to the trash.
+// The texts have their own undo, in their editors.
+
+const UNDO_LIMIT = 200;
+let undone = [], redone = [];  // changes, the last at the end: { notes: [[id, before, after]], cols: [[key, before, after]], meta }
+let base = null;               // the notes and collections as JSON ({ notes: Map, cols: Map }) as they were last
+let recording = false, quiet = 0;
+const removedByUndo = new Set(); // (the notes an undo took away, which a redo brings back)
+
+const noteJson = n => { const { updated, ...rest } = n; return JSON.stringify(rest); };
+const colJson = c => { const { active, ...rest } = c; return JSON.stringify(rest); };
+const snapshot = () => ({
+  notes: new Map(all.map(n => [n.id, noteJson(n)])),
+  cols: new Map(Object.entries(collections).map(([k, c]) => [k, colJson(c)])),
+});
+function diff(a, b) {
+  const out = { notes: [], cols: [] };
+  for (const kind of ['notes', 'cols']) {
+    for (const [k, v] of b[kind]) if (a[kind].get(k) !== v) out[kind].push([k, a[kind].get(k) ?? null, v]);
+    for (const [k, v] of a[kind]) if (!b[kind].has(k)) out[kind].push([k, v, null]);
+  }
+  return out;
+}
+const isEmpty = d => !d.notes.length && !d.cols.length;
+const rebase = () => { base = snapshot(); };
+
+function willRecord() {
+  if (recording) return;
+  recording = true;
+  queueMicrotask(record);
+}
+
+// What changed since the last time, kept as one change.
+function record() {
+  recording = false;
+  if (!base || quiet) return rebase();
+  const now = snapshot(), d = diff(base, now);
+  base = now;
+  d.notes = d.notes.filter(([, , after]) => after != null); // (deleted for good: they can't come back)
+  if (isEmpty(d)) return;
+  undone.push(d);
+  if (undone.length > UNDO_LIMIT) undone.shift();
+  redone = [];
+}
+
+// Changes that aren't kept for Ctrl+Z: the ones the app makes by itself, or that can't be undone.
+// `fn` may be async: what changes meanwhile isn't kept either.
+export async function quietly(fn) {
+  record();
+  quiet++;
+  try {
+    return await fn();
+  } finally {
+    rebase();
+    quiet--;
+  }
+}
+
+// The last change, now given `meta` (what the UI wants to know when it is undone).
+export function tagLast(meta) {
+  record();
+  const d = undone.at(-1);
+  if (d) d.meta = meta;
+  return d || null;
+}
+
+// Undoes the last change (or the given one, if it can still be undone), and returns it; one that
+// changes nothing any more (its notes were deleted for good) is skipped.
+export const undo = (which = null) => step(undone, redone, 1, which);
+export const redo = () => step(redone, undone, 2);
+
+function step(from, to, side, which = null) {
+  record();
+  while (from.length) {
+    const i = which ? from.indexOf(which) : from.length - 1;
+    if (i < 0) return null;
+    const d = from.splice(i, 1)[0], before = snapshot();
+    applyChange(d, side);
+    rebase();
+    if (isEmpty(diff(before, base))) { if (which) return null; continue; }
+    to.push(d);
+    return d;
+  }
+  return null;
+}
+
+// A note with nothing in it yet (made by a change that is undone): it can go away for good.
+function isBlank(n) {
+  if (all.some(x => x.parent === n.id)) return false;
+  if (mode === 'account') {
+    const d = docs.get(n.id);
+    return !!d && !d.queue.length && !d.sending && d.ydoc.getXmlFragment(FIELD).length === 0;
+  }
+  return contents.has(n.id) && !contents.get(n.id)?.content?.length;
+}
+
+// Puts the notes and collections of a change as they were before it (`side` 1) or after it (2).
+function applyChange(d, side) {
+  const ids = [], removed = [];
+  for (const c of d.cols) {
+    const [key] = c, want = c[side];
+    if (want == null) { delete collections[key]; continue; }
+    const now = collections[key], next = JSON.parse(want);
+    if (!now) { collections[key] = { ...next, active: null }; continue; }
+    for (const k of Object.keys(now)) if (k !== 'active') delete now[k];
+    Object.assign(now, next);
+  }
+  for (const c of d.notes) {
+    const [id] = c, want = c[side];
+    let n = lookup(id);
+    if (want == null) {
+      if (!n) continue;
+      if (isBlank(n)) {
+        all = all.filter(x => x !== n);
+        removedByUndo.add(id);
+        removed.push(id);
+        if (mode === 'account') { const doc = docs.get(id); if (doc) { clearTimeout(doc.timer); doc.ydoc.destroy(); docs.delete(id); } }
+        contents.delete(id);
+      } else if (!n.trashed) {
+        n.trashed = Date.now();
+        ids.push(id);
+      }
+      continue;
+    }
+    if (!n) {
+      if (!removedByUndo.delete(id)) continue; // (deleted for good)
+      n = { id };
+      all.push(n);
+      if (mode === 'account') newDoc(id);
+      else contents.set(id, null);
+    }
+    for (const k of Object.keys(n)) if (k !== 'id' && k !== 'updated') delete n[k];
+    Object.assign(n, JSON.parse(want), { updated: Date.now() });
+    ids.push(id);
+  }
+  sift();
+  persist();
+  tellAll(ids, removed);
 }
 
 // ---------- the tree ----------
@@ -392,6 +544,7 @@ export function restoreNote(id) {
 // Deletes a note for good, with what is inside it (in the trash or not); returns their ids.
 export function deleteForever(id) {
   if (!lookup(id)) return [];
+  record(); // (what changed before; this can't be undone)
   const ids = [id, ...descendantsOf(id, { trash: true }).map(n => n.id)];
   // the canvases of its database forget it (in the trash, its copies only waited for it)
   for (const v of collections[lookup(id).parent]?.views || []) {
@@ -413,12 +566,17 @@ export function deleteForever(id) {
   if (mode === 'account') dropDocs(ids);
   dropFolders(ids);
   changed(ids);
+  rebase();
   return ids;
 }
 
 // Moves every note of a space to another one (when a project is deleted, its notes go home, the
 // ones in the trash too). The properties of its top-level notes join the other space's.
 export function moveSpace(from, to) {
+  record(); // (part of deleting a project, which isn't undone)
+  try { moveSpaceNow(from, to); } finally { rebase(); }
+}
+function moveSpaceNow(from, to) {
   const moved = all.filter(n => n.space === from);
   const old = collections[`space:${from}`];
   delete collections[`space:${from}`];
@@ -1128,6 +1286,7 @@ function build(rows) {
   });
   sift();
   binnedElsewhere.push(...shown.filter(id => !getNote(id) && lookup(id)));
+  rebase(); // (not kept for Ctrl+Z)
 }
 
 const mirror = createMirror({
@@ -1172,14 +1331,14 @@ export async function copyLocalNotes(onProgress = () => {}) {
   const index = await readLocalIndex();
   const fresh = index.notes.filter(n => !lookup(n.id));
   if (!fresh.length) return 0;
-  await batch(() => {
+  await quietly(() => batch(() => {
     for (const n of fresh) {
       all.push(clone(n));
       if (index.collections[n.id]) collections[n.id] = clone(index.collections[n.id]);
       newDoc(n.id);
     }
     batched.push(...fresh.map(n => n.id));
-  });
+  }));
   let done = 0;
   for (const n of fresh) {
     const text = await invoke('read_file', { repo: dir, path: `${n.id}.json` }).catch(() => null);

@@ -1571,6 +1571,8 @@ body:has(.cv-focus) #peek.side:not([hidden]) { position: fixed; }
     color: var(--text-2); font-size: 12.5px; line-height: 1.45; overflow-wrap: anywhere;
   }
   .bd-stretch .bd-sx:empty { display: none; }
+  /* (only a title: in the middle of the post-it) */
+  .bd-stretch .bd-card:not(:has(.bd-prop, .bd-sx:not(:empty), .bd-ct-edit)) { justify-content: center; text-align: center; }
   .bd-stretch .bd-card.drop-before::before { top: 0; bottom: 0; left: -6px; right: auto; width: 2px; height: auto; }
   .bd-stretch .bd-col.drop-end .bd-cards::after { width: 2px; height: 60px; }
   .bd-gap:not([hidden]) {

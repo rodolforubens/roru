@@ -11,8 +11,8 @@
 // copy hides the item. Delete deletes what is selected (items to the trash, after a prompt), and F
 // frames it. The wheel zooms it (Ctrl + wheel moves it, or the other way around), a pinch too.
 // Where the canvas is looked at (moved and zoomed) is kept on this device only.
-import * as S from './notes-store.js?v=0bec238';
-import { esc, icon, store, glider, plural } from './util.js?v=0bec238';
+import * as S from './notes-store.js?v=7a0dd56';
+import { esc, icon, store, glider, plural } from './util.js?v=7a0dd56';
 
 const newId = () => crypto.randomUUID?.() ?? Date.now().toString(36) + Math.random().toString(36).slice(2);
 const clone = v => JSON.parse(JSON.stringify(v ?? null));
@@ -498,7 +498,7 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
     if (!heights.size) return;
     const next = { nodes: allNodes().map(n => (heights.has(n.id) ? { ...n, h: heights.get(n.id) } : n)) };
     if (undo) commit(next);
-    else write(next);
+    else S.quietly(() => write(next)); // (by itself: not kept for the notes' Ctrl+Z)
   }
 
   // A double click on the resize handle: the node takes the shape of what it shows (an image the
@@ -661,7 +661,7 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
       // a new text left empty goes away
       if (fresh && !v.trim()) {
         cv.undo.pop();
-        write(withoutNodes([id]));
+        S.quietly(() => write(withoutNodes([id]))); // (as if it was never made)
       } else if (save && item && v !== before) S.renameNote(item.id, v);
       else if (save && !item && v !== before) patchNodes([id], x => ({ ...x, text: v }));
       else repaint();
@@ -1352,7 +1352,7 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
       taken.push(r);
       add.push({ id: newId(), note: list[add.length].id, shape: look, x: snap(r.x), y: snap(r.y), w, h, ...(look === 'sticky' ? { color: 'yellow' } : {}) });
     }
-    write({ nodes: [...(v.nodes || []), ...add] });
+    S.quietly(() => write({ nodes: [...(v.nodes || []), ...add] })); // (by itself: not kept for the notes' Ctrl+Z)
     if (look === 'image') fitImages(add.map(n => n.id));
   }
 
