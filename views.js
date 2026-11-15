@@ -3,13 +3,13 @@
 // cards dragged between them) or a canvas (cards put anywhere, see canvas.js). Also the properties
 // block of an item's page, which shares the value editors with the table.
 // A Branch property links a note to a branch of one of the space's repositories (notes as tasks).
-import * as S from './notes-store.js?v=7a0dd56';
-import * as G from './git.js?v=7a0dd56';
-import { esc, icon, folderName, store } from './util.js?v=7a0dd56';
-import { desktop } from './platform.js?v=7a0dd56';
-import { localPath, sharedPath } from './projects.js?v=7a0dd56';
-import { pickEmoji } from './emoji.js?v=7a0dd56';
-import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=7a0dd56';
+import * as S from './notes-store.js?v=87360ab';
+import * as G from './git.js?v=87360ab';
+import { esc, icon, folderName, store } from './util.js?v=87360ab';
+import { desktop } from './platform.js?v=87360ab';
+import { localPath, sharedPath } from './projects.js?v=87360ab';
+import { pickEmoji } from './emoji.js?v=87360ab';
+import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=87360ab';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -634,10 +634,8 @@ function paint(c) {
     mountCanvas(body, c, { key, view, items: notes, host, repaint: () => paint(c), focus: focused });
   } else {
     body.innerHTML = boardHtml(col, view, notes);
-    if (view.stretch) {
-      fillSnippets(c, notes);
-      showGaps(c);
-    }
+    if (view.stretch || PREVIEWS[view.preview]) fillSnippets(c, notes, view.preview === 'large');
+    if (view.stretch) showGaps(c);
   }
   SCROLLERS.forEach((sel, i) => {
     const x = scrolled[i] && $(sel, c.el);
@@ -815,12 +813,25 @@ function showGaps(c) {
   for (const col of bd.querySelectorAll('.bd-col')) c.gapsRo.observe(col);
 }
 
-// The start of the items' text, shown on the post-its of a stretched board (as each page is read).
-const snippets = new Map(); // id -> { updated, text }
-function fillSnippets(c, notes) {
+// The start of the items' text, shown on the post-its of a stretched board and on the cards of a
+// board with a content preview (as each page is read). A large preview also shows the page's first
+// picture (not on post-its: the CSS leaves it out there).
+const snippets = new Map(); // id -> { updated, cover, text }
+function fillSnippets(c, notes, cover) {
   for (const n of notes) {
     if (n.kind === 'database') continue;
-    const put = p => { const el = c.el.querySelector(`.bd-card[data-note="${CSS.escape(n.id)}"] .bd-sx`); if (el) el.textContent = p?.text || ''; };
+    const put = p => {
+      const card = c.el.querySelector(`.bd-card[data-note="${CSS.escape(n.id)}"]`);
+      const el = card?.querySelector('.bd-sx');
+      if (el) el.textContent = p?.text || '';
+      if (!cover || !card || !p?.cover || card.querySelector('.bd-cv')) return;
+      const img = Object.assign(document.createElement('img'), { className: 'bd-cv', alt: '', loading: 'lazy', draggable: false });
+      img.onerror = () => img.remove();
+      const url = S.fileUrl(p.cover);
+      if (url?.then) url.then(u => { if (u) img.src = u; else img.remove(); });
+      else img.src = url;
+      card.prepend(img);
+    };
     const hit = snippets.get(n.id);
     if (hit?.updated === n.updated) put(hit);
     else host.preview(n.id).then(p => { snippets.set(n.id, p); put(p); }, () => {});
@@ -862,6 +873,9 @@ function renameCard(card, id, done = null) {
   input.select();
 }
 
+// How much of the items' content a board's cards show (`preview` of the view; none by default).
+const PREVIEWS = { small: 'Small', large: 'Large' };
+
 const groupProp = (col, view) => col.schema.find(p => p.id === view.groupBy && p.type === 'select') || col.schema.find(p => p.type === 'select') || null;
 
 function boardHtml(col, view, notes) {
@@ -880,7 +894,7 @@ function boardHtml(col, view, notes) {
       return `<div class="bd-prop pt-${p.type}">${p.type === 'checkbox' ? `${valueHtml(p, v)}<span>${esc(p.name)}</span>` : valueHtml(p, v)}</div>`;
     }).join('');
     return `<div class="bd-card" data-note="${n.id}" draggable="true"><div class="bd-ct ${n.title ? '' : 'untitled'}">${n.icon || n.kind === 'database' ? icon(itemIcon(n), 'bd-ic') : ''}${esc(n.title || 'Untitled')}</div>${props}
-      ${view.stretch && n.kind !== 'database' ? '<div class="bd-sx"></div>' : ''}<button class="cv-btn bd-edit" data-cv="rename-card" title="Rename">${icon('pencil')}</button></div>`;
+      ${(view.stretch || view.preview) && n.kind !== 'database' ? '<div class="bd-sx"></div>' : ''}<button class="cv-btn bd-edit" data-cv="rename-card" title="Rename">${icon('pencil')}</button></div>`;
   };
   const label = o => (o ? chip(o) : `<span class="opt c-none">No ${esc(g.name)}</span>`);
   const column = (o, cards) => `<div class="bd-col" data-group="${o?.id || ''}">
@@ -894,7 +908,8 @@ function boardHtml(col, view, notes) {
   const groups = [...(cardsOf(null).length ? [null] : []), ...g.options];
   const pins = groups.filter(o => pinned.has(o?.id ?? ''));
   // (stretched: the columns share the width, and a wide one shows its cards as post-its, side by side)
-  return `<div class="bd ${view.stretch ? 'bd-stretch' : ''}">${groups.filter(o => !pinned.has(o?.id ?? '')).map(o => column(o, cardsOf(o?.id ?? null))).join('')}
+  // (a content preview shows on the cards in columns, not on post-its, which have their own)
+  return `<div class="bd ${view.stretch ? 'bd-stretch' : ''} ${PREVIEWS[view.preview] ? `bd-pv-${view.preview}` : ''}">${groups.filter(o => !pinned.has(o?.id ?? '')).map(o => column(o, cardsOf(o?.id ?? null))).join('')}
     <button class="bd-addcol" data-cv="add-group">${icon('plus')}Add a group</button>
     ${pins.length ? `<div class="bd-pinned"><div class="bd-pinned-head">${icon('pin')}Pinned groups</div>
       ${pins.map(o => `<div class="bd-pin-row" data-group="${o?.id ?? ''}" data-cv="pinned-group" title="Show its notes">${label(o)}<span class="bd-n">${cardsOf(o?.id ?? null).length}</span>
@@ -966,7 +981,9 @@ function viewMenu(x, y, key, c) {
     { label: view.icon ? 'Change icon…' : 'Add icon…', run: r => pickEmoji(r, view.icon, e => S.updateView(key, view.id, { icon: e })) },
     ...(view.type === 'board' && selects.length > 1 ? ['-', ...selects.map(p => ({ label: `Group by ${p.name}${g?.id === p.id ? '  ✓' : ''}`, run: () => S.updateView(key, view.id, { groupBy: p.id }) }))] : []),
     // (the columns share the width; wide ones show their cards as post-its, side by side)
-    ...(view.type === 'board' ? ['-', { label: `Stretch the columns${view.stretch ? '  ✓' : ''}`, run: () => S.updateView(key, view.id, { stretch: view.stretch ? null : true }) }] : []),
+    ...(view.type === 'board' ? ['-', { label: `Stretch the columns${view.stretch ? '  ✓' : ''}`, run: () => S.updateView(key, view.id, { stretch: view.stretch ? null : true }) },
+      // (the cards in columns show the start of the item's text; post-its keep their own)
+      { label: 'Card preview', items: () => [['', 'None'], ...Object.entries(PREVIEWS)].map(([m, name]) => ({ label: `${name}${(PREVIEWS[view.preview] ? view.preview : '') === m ? '  ✓' : ''}`, run: () => S.updateView(key, view.id, { preview: m || null }) })) }] : []),
     ...(view.type === 'canvas' ? ['-', ...canvasMenuItems(c, key, view, host)] : []),
     ...((view.type === 'table' || view.type === 'board') && col.schema.length ? ['-', ...col.schema.filter(p => p.id !== g?.id).map(p => {
       const hidden = view.hidden?.includes(p.id);

@@ -2,9 +2,9 @@
 // through (see projects.js). On the web page the sign-in goes through the page itself; in the
 // desktop app it goes through the system browser (Google doesn't sign in inside an app's own
 // window), which comes back to a port on this computer where the backend waits for it.
-import { createClient } from './vendor/supabase.js?v=7a0dd56';
-import { SUPABASE_URL, SUPABASE_KEY, LOGIN_PORT } from './config.js?v=7a0dd56';
-import { desktop, invoke } from './platform.js?v=7a0dd56';
+import { createClient } from './vendor/supabase.js?v=87360ab';
+import { SUPABASE_URL, SUPABASE_KEY, LOGIN_PORT } from './config.js?v=87360ab';
+import { desktop, invoke } from './platform.js?v=87360ab';
 
 export const configured = !!(SUPABASE_URL && SUPABASE_KEY);
 

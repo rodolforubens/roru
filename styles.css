@@ -1555,6 +1555,21 @@ body:has(.cv-focus) #peek.side:not([hidden]) { position: fixed; }
 .bd-addcol { flex: none; margin-top: 4px; }
 .bd-empty p { margin: 0 0 10px; }
 
+/* a board's content preview: the start of each item's text on its card (a large one: more of it,
+   under the page's first picture); post-its (below) keep their own and show no picture */
+.bd-cv { display: none; }
+.bd-pv-small .bd-sx, .bd-pv-large .bd-sx {
+  display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden;
+  color: var(--text-2); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere;
+}
+.bd-pv-small .bd-sx { -webkit-line-clamp: 3; }
+.bd-pv-large .bd-sx { -webkit-line-clamp: 9; }
+.bd-pv-small .bd-sx:empty, .bd-pv-large .bd-sx:empty { display: none; }
+.bd-pv-large .bd-cv {
+  display: block; width: calc(100% + 20px); max-height: 180px; margin: -8px -10px 2px; object-fit: cover;
+  border-radius: 7px 7px 0 0; background: var(--bg-3);
+}
+
 /* a stretched board: the columns share the width, and one wide enough for two shows its cards as
    post-its (squares, with the start of their text) side by side, in a grid */
 .bd-stretch .bd-col { flex: 1 1 260px; width: auto; min-width: 240px; container: bdcol / inline-size; }
@@ -1571,6 +1586,7 @@ body:has(.cv-focus) #peek.side:not([hidden]) { position: fixed; }
     color: var(--text-2); font-size: 12.5px; line-height: 1.45; overflow-wrap: anywhere;
   }
   .bd-stretch .bd-sx:empty { display: none; }
+  .bd-stretch .bd-cv { display: none; }
   /* (only a title: in the middle of the post-it) */
   .bd-stretch .bd-card:not(:has(.bd-prop, .bd-sx:not(:empty), .bd-ct-edit)) { justify-content: center; text-align: center; }
   .bd-stretch .bd-card.drop-before::before { top: 0; bottom: 0; left: -6px; right: auto; width: 2px; height: auto; }
