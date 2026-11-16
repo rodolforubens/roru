@@ -5,17 +5,17 @@
 // below as it was. Pages nest in other pages through their text (a link to the nested page, or a
 // database block); databases show in the tree as one item. Tabs and spaces belong to app.js (see
 // initNotesUi); the table, board and canvas views and the properties are in views.js (and canvas.js).
-import * as S from './notes-store.js?v=1a9f0e8';
-import * as G from './git.js?v=1a9f0e8';
-import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=1a9f0e8';
-import { openImageViewer, copyImage } from './image-viewer.js?v=1a9f0e8';
-import { pickEmoji } from './emoji.js?v=1a9f0e8';
-import { toMarkdown } from './markdown.js?v=1a9f0e8';
-import { sharedPath } from './projects.js?v=1a9f0e8';
-import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView, focusedDb } from './views.js?v=1a9f0e8';
-import { importNotion } from './notion-import.js?v=1a9f0e8';
-import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative, fmtSize } from './util.js?v=1a9f0e8';
-import { desktop, invoke, isMobile } from './platform.js?v=1a9f0e8';
+import * as S from './notes-store.js?v=b74f5be';
+import * as G from './git.js?v=b74f5be';
+import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=b74f5be';
+import { openImageViewer, copyImage } from './image-viewer.js?v=b74f5be';
+import { pickEmoji } from './emoji.js?v=b74f5be';
+import { toMarkdown } from './markdown.js?v=b74f5be';
+import { sharedPath } from './projects.js?v=b74f5be';
+import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView, focusedDb, VIEW_KINDS, viewName } from './views.js?v=b74f5be';
+import { importNotion } from './notion-import.js?v=b74f5be';
+import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative, fmtSize } from './util.js?v=b74f5be';
+import { desktop, invoke, isMobile } from './platform.js?v=b74f5be';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -31,8 +31,7 @@ export const noteIcon = id => S.getNote(id)?.icon || (S.isDatabase(id) ? 'table'
 // does ("Same as parent"); the top of a space opens them as chosen in the dashboard (or start page).
 const OPEN_IN = { side: 'Side peek', center: 'Center peek', tab: 'New tab' };
 // The kinds of database a "New database" offers (its first view), each made by `make(view)`.
-export const databaseKinds = make => [['table', 'Table'], ['board', 'Board'], ['list', 'List'], ['canvas', 'Canvas']]
-  .map(([view, name]) => ({ label: name, run: () => make(view) }));
+export const databaseKinds = make => VIEW_KINDS.map(view => ({ label: viewName(view), run: () => make(view) }));
 const topOpen = () => store('notesOpen') || 'side';
 const openPref = (parent = null) => S.getNote(S.openInSource(parent))?.openIn || topOpen(); // inside `parent`
 const openPrefOf = id => openPref(S.getNote(id)?.parent ?? null); // where a note opens
@@ -116,7 +115,7 @@ export function newNote({ space = host.space(), parent = null, props = null, ope
   return n;
 }
 
-// Creates a database with a first view (`view`: 'table', 'board', 'canvas' or 'list'). In a page, it shows
+// Creates a database with a first view (`view`: 'table', 'board', 'gallery', 'canvas' or 'list'). In a page, it shows
 // as a block at the end of the page's text (`block` false when the caller puts it somewhere else); in
 // a database it is one of its items (with `props`).
 export function newDatabase({ space = host.space(), parent = null, view = 'table', props = null, open = openPref(parent), block = true } = {}) {
@@ -759,6 +758,9 @@ function mountPage(container, id, place) {
       }, {
         title: 'Database: board', hint: 'Items in columns by status', icon: 'board', keys: 'database db kanban board',
         run: database('board'),
+      }, {
+        title: 'Database: gallery', hint: 'Items as a grid of their pictures', icon: 'gallery', keys: 'database db gallery grid photos pictures images',
+        run: database('gallery'),
       }, {
         title: 'Database: canvas', hint: 'Items as cards put anywhere, with arrows', icon: 'canvas', keys: 'database db canvas whiteboard flowchart diagram',
         run: database('canvas'),

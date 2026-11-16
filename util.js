@@ -1,4 +1,4 @@
-import { invoke } from './platform.js?v=1a9f0e8';
+import { invoke } from './platform.js?v=b74f5be';
 
 export function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -191,6 +191,7 @@ export const icons = {
   youtube: '<rect x="2.5" y="5" width="19" height="14" rx="4"/><path d="M10 9.2v5.6l4.8-2.8z"/>',
   xLogo: '<path d="M4.5 4h4l11 16h-4zM19.5 4l-6.3 7.2M4.5 20l6.3-7.2"/>',
   copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/>',
+  gallery: '<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/>',
   canvas: '<rect x="3" y="3" width="8" height="6" rx="1.5"/><rect x="13" y="15" width="8" height="6" rx="1.5"/><path d="M7 9v4a2 2 0 0 0 2 2h4"/><path d="M11 13l2 2-2 2"/>',
   sticky: '<path d="M4 4h16v10l-6 6H4z"/><path d="M14 20v-6h6"/>',
   shape: '<rect x="3" y="9" width="10" height="11" rx="1.5"/><circle cx="16" cy="8" r="5"/>',

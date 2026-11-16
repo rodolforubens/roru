@@ -1556,6 +1556,49 @@ body:has(.cv-focus) #peek.side:not([hidden]) { position: fixed; }
 .bd-addcol { flex: none; margin-top: 4px; }
 .bd-empty p { margin: 0 0 10px; }
 
+/* a gallery: the items as tiles in a grid, their first picture over their title. Squares of three
+   sizes, or ("Maintain aspect") rows of one height where each tile is as wide as its picture's shape
+   asks (`--ar`) and the row fills the width, like a photo library */
+.gl { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--gs), 1fr)); gap: 12px 10px; align-items: start; padding: 4px 2px; --gs: 170px; }
+.gl-small { --gs: 104px; gap: 8px; }
+.gl-large { --gs: 270px; }
+.gl-tile { position: relative; display: flex; flex-direction: column; min-width: 0; cursor: pointer; }
+.gl-pic {
+  position: relative; display: grid; place-items: center; aspect-ratio: 1; overflow: hidden; border-radius: 8px;
+  background: linear-gradient(135deg, hsl(var(--h, 220) 45% 32%), hsl(calc(var(--h, 220) + 40) 50% 22%));
+  box-shadow: 0 0 0 1px var(--border);
+}
+.gl-pic img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: var(--bg-3); }
+.gl-ic { width: 30%; height: 30%; max-width: 44px; max-height: 44px; color: rgba(255, 255, 255, .85); font-size: 28px; }
+.gl-ct { height: 24px; padding: 5px 2px 0; overflow: hidden; font-size: 12.5px; font-weight: 500; line-height: 19px; white-space: nowrap; text-overflow: ellipsis; }
+.gl-small .gl-ct { font-size: 12px; }
+.gl-ct.untitled { color: var(--text-3); }
+.gl-tile:hover .gl-pic { box-shadow: 0 0 0 1px var(--text-3); }
+.gl-tile:hover .bd-edit { visibility: visible; }
+.gl-tile.renaming .bd-edit { display: none; }
+.gl-tile .bd-ct-edit { margin: 3px 0 0; padding: 2px 4px; font-size: 12.5px; line-height: 17px; }
+.gl-tile.selected .gl-pic { box-shadow: 0 0 0 2px var(--accent); }
+.gl-tile.selected .gl-pic::after { content: ""; position: absolute; inset: 0; background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.gl-tile.dragging { opacity: .4; }
+.gl-tile.drop-before::before, .gl-tile.drop-after::after {
+  content: ""; position: absolute; z-index: 1; top: 0; bottom: 24px; width: 2px; border-radius: 1px; background: var(--accent);
+}
+.gl-tile.drop-before::before { left: -6px; }
+.gl-tile.drop-after::after { right: -6px; }
+.gl-new { display: block; min-width: 0; padding: 0; border: none; background: none; color: var(--text-3); font: inherit; font-size: 13px; cursor: pointer; }
+.gl-new .gl-pic { display: flex; align-items: center; justify-content: center; gap: 6px; background: none; box-shadow: none; border: 1px dashed var(--border); }
+.gl-new .ic { width: 15px; height: 15px; }
+.gl-new:hover .gl-pic { border-color: var(--text-3); background: var(--hover); color: var(--text-2); }
+.gl-fill { display: none; }
+.gl-aspect { display: flex; flex-wrap: wrap; --gh: 170px; }
+.gl-aspect .gl-tile, .gl-aspect .gl-new { flex: var(--ar, 1) 1 calc(var(--ar, 1) * var(--gh)); max-width: 100%; }
+.gl-aspect .gl-pic { aspect-ratio: var(--ar, 1); }
+.gl-aspect .gl-fill { display: block; flex: 1000 0 0; height: 0; }
+html.mobile .gl { --gs: 130px; }
+html.mobile .gl-small { --gs: 84px; }
+html.mobile .gl-large { --gs: 240px; }
+html.mobile .gl-aspect { --gh: 120px; }
+
 /* a board's content preview: the start of each item's text on its card (a large one: more of it,
    under the page's first picture); post-its (below) keep their own and show no picture */
 .bd-cv { display: none; }

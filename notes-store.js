@@ -18,8 +18,9 @@
 // is shown in a page's text as a block (or opened on its own), and as a single item in the tree.
 // A database's collection, keyed by its id, defines custom properties ({ id, name, type, options }),
 // which its items fill in (`props`: property id -> value), and views ({ id, type: 'list' | 'table' |
-// 'board' | 'canvas', name, sort, hidden, groupBy, pinned, stretch, preview
-// ('small' | 'large': a board's cards show the start of the item's text) }) to show them.
+// 'board' | 'gallery' | 'canvas', name, sort, hidden, groupBy, pinned, stretch, preview
+// ('small' | 'large': a board's cards show the start of the item's text), size ('small' | 'large' |
+// 'aspect', else medium: a gallery's tiles, squares or of each picture's shape) }) to show them.
 // A canvas view also has `nodes` ({ id, note (an item's id) or text (canvas only), shape: 'box' |
 // 'sticky' | 'image' | 'ellipse' | 'diamond' | 'text', color, x, y, w, h }, the last ones on top;
 // an item can have several), `edges` (arrows: { id, from, to (node ids), label, ends: 'both' |
@@ -31,11 +32,11 @@
 // A deleted note goes to the trash with what is inside it: it gets `trashed` (when), and it and the
 // notes inside it leave every list (getNote, childrenOf…) until it is restored or deleted for good
 // (see "The trash" below).
-import { desktop, invoke, convertFileSrc } from './platform.js?v=1a9f0e8';
-import { db, currentUser } from './account.js?v=1a9f0e8';
-import { createMirror, clone, reportStatus } from './mirror.js?v=1a9f0e8';
-import { Y, updateYFragment, yDocToProsemirrorJSON } from './vendor/tiptap.js?v=1a9f0e8';
-import { noteSchema, fitToSchema } from './editor.js?v=1a9f0e8';
+import { desktop, invoke, convertFileSrc } from './platform.js?v=b74f5be';
+import { db, currentUser } from './account.js?v=b74f5be';
+import { createMirror, clone, reportStatus } from './mirror.js?v=b74f5be';
+import { Y, updateYFragment, yDocToProsemirrorJSON } from './vendor/tiptap.js?v=b74f5be';
+import { noteSchema, fitToSchema } from './editor.js?v=b74f5be';
 
 const SAVE_DELAY = 300; // ms after the last edit (files on this computer)
 

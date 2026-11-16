@@ -1,15 +1,16 @@
 // The views of a database (its items), like in Notion: a list (the tree), a table (a spreadsheet of
 // the items and their properties), a board (kanban: a column per option of a select property,
-// cards dragged between them) or a canvas (cards put anywhere, see canvas.js). Also the properties
+// cards dragged between them), a gallery (a grid of the items' first pictures) or a canvas (cards put
+// anywhere, see canvas.js). Also the properties
 // block of an item's page, which shares the value editors with the table.
 // A Branch property links a note to a branch of one of the space's repositories (notes as tasks).
-import * as S from './notes-store.js?v=1a9f0e8';
-import * as G from './git.js?v=1a9f0e8';
-import { esc, icon, folderName, store } from './util.js?v=1a9f0e8';
-import { desktop } from './platform.js?v=1a9f0e8';
-import { localPath, sharedPath } from './projects.js?v=1a9f0e8';
-import { pickEmoji } from './emoji.js?v=1a9f0e8';
-import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=1a9f0e8';
+import * as S from './notes-store.js?v=b74f5be';
+import * as G from './git.js?v=b74f5be';
+import { esc, icon, folderName, store } from './util.js?v=b74f5be';
+import { desktop } from './platform.js?v=b74f5be';
+import { localPath, sharedPath } from './projects.js?v=b74f5be';
+import { pickEmoji } from './emoji.js?v=b74f5be';
+import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=b74f5be';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -51,7 +52,9 @@ export const TYPES = {
   text: ['Text', 'text'], number: ['Number', 'hash'], select: ['Select', 'select'], multi: ['Multi-select', 'tags'],
   date: ['Date', 'calendar'], checkbox: ['Checkbox', 'checkbox'], url: ['URL', 'link'], branch: ['Branch', 'branch'],
 };
-const VIEWS = { list: ['List', 'list'], table: ['Table', 'table'], board: ['Board', 'board'], canvas: ['Canvas', 'canvas'] };
+const VIEWS = { list: ['List', 'list'], table: ['Table', 'table'], board: ['Board', 'board'], gallery: ['Gallery', 'gallery'], canvas: ['Canvas', 'canvas'] };
+export const VIEW_KINDS = ['table', 'board', 'list', 'gallery', 'canvas']; // the order they are offered in for a new database
+export const viewName = type => VIEWS[type][0];
 const COLOR_NAMES = { gray: 'Gray', brown: 'Brown', orange: 'Orange', yellow: 'Yellow', green: 'Green', blue: 'Blue', purple: 'Purple', pink: 'Pink', red: 'Red' };
 const hasOptions = p => p.type === 'select' || p.type === 'multi';
 const activeView = col => col.views.find(v => v.id === col.active) || col.views[0];
@@ -632,6 +635,9 @@ function paint(c) {
     body.innerHTML = tableHtml(col, view, notes);
   } else if (view.type === 'canvas') {
     mountCanvas(body, c, { key, view, items: notes, host, repaint: () => paint(c), focus: focused });
+  } else if (view.type === 'gallery') {
+    body.innerHTML = galleryHtml(view, notes);
+    fillGallery(c, notes);
   } else {
     body.innerHTML = boardHtml(col, view, notes);
     if (view.stretch || PREVIEWS[view.preview]) fillSnippets(c, notes, view.preview === 'large');
@@ -649,9 +655,10 @@ function paint(c) {
 
 // ---------- selection ----------
 
-// Table rows and board cards can be selected (a box drawn from an empty spot, Shift+click, the
-// row's check); the context menu, Delete and dragging then act on all of them.
-const itemsOf = c => c.el.querySelectorAll('tr[data-note], .bd-card');
+// Table rows, board cards and gallery tiles can be selected (a box drawn from an empty spot,
+// Shift+click, the row's check); the context menu, Delete and dragging then act on all of them.
+const ITEM = 'tr[data-note], .bd-card, .gl-tile', CARD = '.bd-card, .gl-tile';
+const itemsOf = c => c.el.querySelectorAll(ITEM);
 
 function paintSelection(c) {
   for (const it of itemsOf(c)) it.classList.toggle('selected', c.sel.has(it.dataset.note));
@@ -675,12 +682,12 @@ function toggle(c, id) {
 // The selected notes in the order they are shown.
 const selection = c => [...itemsOf(c)].map(it => it.dataset.note).filter(id => c.sel.has(id));
 
-// Draws a selection box from an empty spot of a table or a board; with Shift or Ctrl it adds to
+// Draws a selection box from an empty spot of a table, a board or a gallery; with Shift or Ctrl it adds to
 // the selection. A click without a drag clears it.
 function boxSelect(c, e) {
   const body = e.target.closest('.cv-body');
-  if (e.button !== 0 || !body?.matches('.cv-table, .cv-board')) return;
-  if (e.target.closest('.bd-card, td:not(.vt-fill), th, button, input, .bd-head, .bd-pin-row, a')) return;
+  if (e.button !== 0 || !body?.matches('.cv-table, .cv-board, .cv-gallery')) return;
+  if (e.target.closest('.bd-card, .gl-tile, td:not(.vt-fill), th, button, input, textarea, .bd-head, .bd-pin-row, a')) return;
   // (the drag keeps the focus where it is: a title being typed there ends, like with any click
   // elsewhere, so a new item left empty goes and one with a title stays)
   if (editing(c.el)) document.activeElement.blur();
@@ -841,7 +848,7 @@ function fillSnippets(c, notes, cover) {
 // The pencil of a card: its title is edited right there (Enter or leaving it saves, Escape doesn't).
 // With `done(how, text)` ('enter', 'escape' or 'blur'), that decides instead (see typeTitle).
 function renameCard(card, id, done = null) {
-  const t = card?.querySelector('.bd-ct');
+  const t = card?.querySelector('.bd-ct, .gl-ct');
   if (!t) return;
   const input = Object.assign(document.createElement('textarea'), { className: 'bd-ct-edit', value: S.getNote(id)?.title || '', rows: 1, placeholder: 'Untitled' });
   t.replaceWith(input);
@@ -871,6 +878,56 @@ function renameCard(card, id, done = null) {
   fit();
   input.focus();
   input.select();
+}
+
+// ---------- gallery ----------
+
+// A gallery shows the items as tiles in a grid, each with the first picture of its page (else its
+// icon on a color of its own) over its title, and a tile to add an item after the last one. `size`
+// of the view: 'small', 'medium' (the default) or 'large' crop the pictures to squares; 'aspect'
+// keeps each picture's shape, in rows of one height that fill the width, like a photo library.
+const SIZES = { small: 'Small', medium: 'Medium', large: 'Large', aspect: 'Maintain aspect' };
+const sizeOf = view => (SIZES[view.size] ? view.size : 'medium');
+const hueOf = text => [...(text || 'x')].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) % 360, 7);
+const ratios = new Map(); // a picture -> its width / height, known once it has loaded
+const ratioOf = id => ratios.get(snippets.get(id)?.cover) || 1;
+
+function galleryHtml(view, notes) {
+  const tile = n => `<div class="gl-tile" data-note="${n.id}" draggable="true" style="--h: ${hueOf(n.title || n.id)}; --ar: ${ratioOf(n.id)}">
+      <div class="gl-pic">${icon(itemIcon(n), 'gl-ic')}</div>
+      <div class="gl-ct ${n.title ? '' : 'untitled'}">${esc(n.title || 'Untitled')}</div>
+      <button class="cv-btn bd-edit" data-cv="rename-card" title="Rename">${icon('pencil')}</button></div>`;
+  // (the last thing in the rows of 'aspect' takes the room left in the last one, so its tiles keep their size)
+  return `<div class="gl gl-${sizeOf(view)}">${notes.map(tile).join('')}
+    <button class="gl-new" data-cv="new-tile" title="Add an item (right-click: a database)"><span class="gl-pic">${icon('plus')}<span>New</span></span></button><i class="gl-fill"></i></div>`;
+}
+
+// The tiles' pictures, as each page is read; a picture's shape is known when it has loaded.
+function fillGallery(c, notes) {
+  for (const n of notes) {
+    if (n.kind === 'database') continue;
+    const put = p => {
+      const tile = c.el.querySelector(`.gl-tile[data-note="${CSS.escape(n.id)}"]`), pic = tile?.querySelector('.gl-pic');
+      if (!pic || !p?.cover || pic.querySelector('img')) return;
+      const img = Object.assign(document.createElement('img'), { alt: '', loading: 'lazy', draggable: false });
+      img.onerror = () => img.remove();
+      img.onload = () => {
+        if (!img.naturalWidth || !img.naturalHeight) return;
+        // (very wide or very tall pictures are cropped, or a row would be a sliver or a tower)
+        const ar = Math.min(2.5, Math.max(0.5, img.naturalWidth / img.naturalHeight));
+        ratios.set(p.cover, ar);
+        tile.style.setProperty('--ar', ar);
+        pic.classList.add('has-img');
+      };
+      const url = S.fileUrl(p.cover);
+      if (url?.then) url.then(u => { if (u) img.src = u; else img.remove(); });
+      else img.src = url;
+      pic.append(img);
+    };
+    const hit = snippets.get(n.id);
+    if (hit?.updated === n.updated) put(hit);
+    else host.preview(n.id).then(p => { snippets.set(n.id, p); put(p); }, () => {});
+  }
 }
 
 // How much of the items' content a board's cards show (`preview` of the view; none by default).
@@ -985,6 +1042,7 @@ function viewMenu(x, y, key, c) {
       // (the cards in columns show the start of the item's text; post-its keep their own)
       { label: 'Card preview', items: () => [['', 'None'], ...Object.entries(PREVIEWS)].map(([m, name]) => ({ label: `${name}${(PREVIEWS[view.preview] ? view.preview : '') === m ? '  ✓' : ''}`, run: () => S.updateView(key, view.id, { preview: m || null }) })) }] : []),
     ...(view.type === 'canvas' ? ['-', ...canvasMenuItems(c, key, view, host)] : []),
+    ...(view.type === 'gallery' ? ['-', { label: 'Size', items: () => Object.entries(SIZES).map(([m, name]) => ({ label: `${name}${sizeOf(view) === m ? '  ✓' : ''}`, run: () => S.updateView(key, view.id, { size: m === 'medium' ? null : m }) })) }] : []),
     ...((view.type === 'table' || view.type === 'board') && col.schema.length ? ['-', ...col.schema.filter(p => p.id !== g?.id).map(p => {
       const hidden = view.hidden?.includes(p.id);
       return { label: `${hidden ? 'Show' : 'Hide'} ${p.name}`, run: () => S.updateView(key, view.id, { hidden: hidden ? view.hidden.filter(x => x !== p.id) : [...(view.hidden || []), p.id] }) };
@@ -1027,7 +1085,7 @@ function bindCollection(c) {
     const id = e.target.closest('[data-note]')?.dataset.note;
     const colEl = e.target.closest('.bd-col');
     // Shift+click adds a row or a card to the selection (or takes it out)
-    if (e.shiftKey && e.target.closest('tr[data-note], .bd-card')) return toggle(c, id);
+    if (e.shiftKey && e.target.closest(ITEM)) return toggle(c, id);
     switch (btn?.dataset.cv) {
       case 'select': return toggle(c, id);
       case 'select-all': {
@@ -1044,7 +1102,9 @@ function bindCollection(c) {
         if (view.type === 'canvas') return canvasNew(c);
         return c.create({});
       case 'new-row': return newRow(c);
-      case 'rename-card': return renameCard(btn.closest('.bd-card'), id);
+      case 'rename-card': return renameCard(btn.closest(CARD), id);
+      // (the tile after a gallery's last one: an item whose title is typed on its tile)
+      case 'new-tile': return newRow(c);
       // (a column's buttons make a card that doesn't open: its title is typed on it)
       case 'new-in': { const g = groupProp(col, view); return typeTitle(c, c.create(colEl.dataset.group ? { [g.id]: colEl.dataset.group } : {}, 'none')); }
       // the "+" of a column's header: a card at the top of the column
@@ -1093,7 +1153,7 @@ function bindCollection(c) {
     }
     const cell = e.target.closest('td.vt-cell');
     if (cell) return editValue(cell, id, propOf(key, cell.dataset.prop));
-    if (e.target.closest('.bd-card')) {
+    if (e.target.closest(CARD)) {
       select(c, []);
       return c.open(id, e, 'board');
     }
@@ -1104,13 +1164,13 @@ function bindCollection(c) {
   // The context menu of a selected note acts on the whole selection; on another note, on that one.
   // On a "New" button, it offers a database as the new item (right inside this one) instead of a page.
   el.addEventListener('contextmenu', e => {
-    const newBtn = e.target.closest('[data-cv="new"], [data-cv="new-in"], [data-cv="new-top"], [data-cv="new-row"]');
+    const newBtn = e.target.closest('[data-cv="new"], [data-cv="new-in"], [data-cv="new-top"], [data-cv="new-row"], [data-cv="new-tile"]');
     if (newBtn && !e.target.closest('.cvs')) {
       e.preventDefault();
       return newMenu(c, newBtn, e.clientX, e.clientY);
     }
     const tab = e.target.closest('.cv-tab');
-    const item = e.target.closest('tr[data-note], .bd-card');
+    const item = e.target.closest(ITEM);
     if (!tab && !item) return;
     e.preventDefault();
     if (tab) {
@@ -1122,7 +1182,7 @@ function bindCollection(c) {
     host.showMenu(e.clientX, e.clientY, host.noteMenu(item.dataset.note));
   });
   el.addEventListener('auxclick', e => {
-    const item = e.target.closest('tr[data-note], .bd-card');
+    const item = e.target.closest(ITEM);
     if (item && e.button === 1) c.open(item.dataset.note, { ctrlKey: true }, 'table');
   });
 
@@ -1190,6 +1250,53 @@ function bindCollection(c) {
     el.querySelectorAll('.bd-card.dragging').forEach(x => x.classList.remove('dragging'));
   });
 
+  // Gallery: drag tiles between the others (sets the order); a selected one takes the whole selection
+  let tile = null, tiles = [];
+  const clearTiles = () => el.querySelectorAll('.gl .drop-before, .gl .drop-after').forEach(x => x.classList.remove('drop-before', 'drop-after'));
+  // the tile the dragged ones go before (the first one after the pointer, row by row), or none: at the end
+  const tileTarget = e => {
+    if (!e.target.closest('.gl')) return null;
+    const rest = [...el.querySelectorAll('.gl-tile')].filter(x => !tiles.includes(x.dataset.note));
+    const before = rest.find(x => {
+      const r = x.getBoundingClientRect();
+      return e.clientY < r.top || (e.clientY < r.bottom && e.clientX < r.left + r.width / 2);
+    }) || null;
+    return { before, last: rest[rest.length - 1] || null };
+  };
+  el.addEventListener('dragstart', e => {
+    const t = e.target.closest?.('.gl-tile');
+    if (!t) return;
+    tile = t.dataset.note;
+    tiles = c.sel.has(tile) && c.sel.size > 1 ? selection(c) : [tile];
+    // (after the browser took its picture of the tile)
+    setTimeout(() => { for (const x of itemsOf(c)) if (tiles.includes(x.dataset.note)) x.classList.add('dragging'); });
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', tile);
+  });
+  el.addEventListener('dragover', e => {
+    const t = tile && tileTarget(e);
+    if (!t) return;
+    e.preventDefault();
+    clearTiles();
+    if (t.before) t.before.classList.add('drop-before');
+    else t.last?.classList.add('drop-after');
+  });
+  el.addEventListener('drop', e => {
+    const t = tile && tileTarget(e);
+    if (!t) return;
+    e.preventDefault();
+    const ids = tiles, before = t.before?.dataset.note ?? null;
+    tile = null; // the gallery is drawn again, so "dragend" won't reach it
+    tiles = [];
+    S.batch(() => ids.forEach(id => S.moveNote(id, c.parent, before)));
+  });
+  el.addEventListener('dragend', () => {
+    tile = null;
+    tiles = [];
+    clearTiles();
+    el.querySelectorAll('.gl-tile.dragging').forEach(x => x.classList.remove('dragging'));
+  });
+
   // Board: drag a column by its header to reorder the columns (the order of the property's options)
   let dragCol = null;
   const clearCols = () => el.querySelectorAll('.bd-col.drop-left, .bd-col.drop-right').forEach(x => x.classList.remove('drop-left', 'drop-right'));
@@ -1255,7 +1362,7 @@ function newMenu(c, btn, x, y) {
   host.showMenu(x, y, [
     { label: 'New page', run: () => place(c.create(props, open)) },
     '-',
-    ...['table', 'board', 'list', 'canvas'].map(t => ({ label: `New database: ${VIEWS[t][0].toLowerCase()}`, run: () => place(c.createDatabase?.(t, props, open)) })),
+    ...VIEW_KINDS.map(t => ({ label: `New database: ${VIEWS[t][0].toLowerCase()}`, run: () => place(c.createDatabase?.(t, props, open)) })),
   ]);
 }
 
@@ -1271,7 +1378,7 @@ function typeTitle(c, n) {
     if (how === 'enter') addBelow(c, n.id);
   };
   const at = CSS.escape(n.id);
-  const card = c.el.querySelector(`.bd-card[data-note="${at}"]`);
+  const card = c.el.querySelector(`.bd-card[data-note="${at}"], .gl-tile[data-note="${at}"]`);
   if (card) return renameCard(card, n.id, done);
   const cell = c.el.querySelector(`tr[data-note="${at}"] .vt-tt, .nt-row[data-note="${at}"] .nt-title`);
   if (cell) {
@@ -1294,7 +1401,7 @@ function addBelow(c, id) {
 // The icon of an item: its own, or a database's or a page's.
 const itemIcon = n => n.icon || (n.kind === 'database' ? 'table' : 'note');
 
-// A new row of the table, its title typed right there.
+// A new row of the table (or tile of the gallery), its title typed right there.
 function newRow(c) {
   typeTitle(c, c.create({}, 'none'));
 }
