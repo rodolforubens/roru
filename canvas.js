@@ -11,8 +11,8 @@
 // copy hides the item. Delete deletes what is selected (items to the trash, after a prompt), and F
 // frames it. The wheel zooms it (Ctrl + wheel moves it, or the other way around), a pinch too.
 // Where the canvas is looked at (moved and zoomed) is kept on this device only.
-import * as S from './notes-store.js?v=4301881';
-import { esc, icon, store, glider, plural } from './util.js?v=4301881';
+import * as S from './notes-store.js?v=eb2580f';
+import { esc, icon, store, glider, plural } from './util.js?v=eb2580f';
 
 const newId = () => crypto.randomUUID?.() ?? Date.now().toString(36) + Math.random().toString(36).slice(2);
 const clone = v => JSON.parse(JSON.stringify(v ?? null));
@@ -1334,12 +1334,35 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
   // ---------- items that come by themselves ----------
 
   // The items with no copy that weren't hidden get one, in free spots of a grid below what is there.
-  function placeMissing() {
+  // One whose text starts with a picture comes as an image, of the picture's shape (so a canvas added
+  // to a database of pictures shows them); the others with the view's look for new items.
+  async function placeMissing() {
+    if (cv.placing) return;
+    cv.placing = true;
+    try {
+      const todo = () => {
+        const v = V();
+        if (!v || v.type !== 'canvas') return [];
+        const have = new Set((v.nodes || []).map(n => n.note).filter(Boolean)), hid = new Set(v.off || []);
+        return S.childrenOf(c.space, c.parent).filter(n => !have.has(n.id) && !hid.has(n.id));
+      };
+      // (their texts are read first; what changed meanwhile is seen when they are placed)
+      const lead = new Map(); // item id -> its leading picture's shape (width / height)
+      await Promise.all(todo().map(async item => {
+        if (item.kind === 'database') return;
+        const p = await previewFor(item);
+        const r = p?.lead ? await ratioOfSrc(p.cover) : null;
+        if (r) lead.set(item.id, r);
+      }));
+      placeNow(todo(), lead);
+    } finally {
+      cv.placing = false;
+    }
+  }
+
+  function placeNow(list, lead) {
     const v = V();
-    if (!v || v.type !== 'canvas') return;
-    const have = new Set((v.nodes || []).map(n => n.note).filter(Boolean)), hid = new Set(v.off || []);
-    const list = S.childrenOf(c.space, c.parent).filter(n => !have.has(n.id) && !hid.has(n.id));
-    if (!list.length) return;
+    if (!v || v.type !== 'canvas' || !list.length) return;
     const look = v.look || 'box', [w, h] = SIZES[look];
     const taken = (v.nodes || []).filter(n => !n.note || byId.has(n.note)).map(n => { const [nw, nh] = sizeOf(n); return { x: n.x, y: n.y, w: nw, h: nh }; });
     const b = bounds(taken) || { x: 0, y: 0, w: 0, h: 0 };
@@ -1347,13 +1370,16 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
     const free = r => !taken.some(t => r.x < t.x + t.w + gap / 2 && r.x + r.w + gap / 2 > t.x && r.y < t.y + t.h + gap / 2 && r.y + r.h + gap / 2 > t.y);
     const add = [];
     for (let i = 0; add.length < list.length && i < 20000; i++) {
+      const item = list[add.length], ratio = lead.get(item.id);
       const r = { x: b.x + (i % cols) * cw, y: b.y + Math.floor(i / cols) * ch, w, h };
+      if (ratio) Object.assign(r, { w: SIZES.image[0], h: imageHeight(SIZES.image[0], ratio, !!item.title) });
       if (!free(r)) continue;
       taken.push(r);
-      add.push({ id: newId(), note: list[add.length].id, shape: look, x: snap(r.x), y: snap(r.y), w, h, ...(look === 'sticky' ? { color: 'yellow' } : {}) });
+      const shape = ratio ? 'image' : look;
+      add.push({ id: newId(), note: item.id, shape, x: snap(r.x), y: snap(r.y), w: r.w, h: r.h, ...(shape === 'sticky' ? { color: 'yellow' } : {}) });
     }
     S.quietly(() => write({ nodes: [...(v.nodes || []), ...add] })); // (by itself: not kept for the notes' Ctrl+Z)
-    if (look === 'image') fitImages(add.map(n => n.id));
+    if (look === 'image') fitImages(add.filter(n => !lead.has(n.note)).map(n => n.id));
   }
 
   // ---------- ready ----------
@@ -1385,8 +1411,7 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
   if (missing.length && !cv.busy) {
     const first = !camOf(viewId);
     queueMicrotask(() => {
-      placeMissing();
-      if (first) c.canvas?.api?.fit();
+      placeMissing().then(() => { if (first) c.canvas?.api?.fit(); });
     });
   }
   if (focus) root.focus({ preventScroll: true });
