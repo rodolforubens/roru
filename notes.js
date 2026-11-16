@@ -5,17 +5,17 @@
 // below as it was. Pages nest in other pages through their text (a link to the nested page, or a
 // database block); databases show in the tree as one item. Tabs and spaces belong to app.js (see
 // initNotesUi); the table, board and canvas views and the properties are in views.js (and canvas.js).
-import * as S from './notes-store.js?v=cc51531';
-import * as G from './git.js?v=cc51531';
-import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=cc51531';
-import { openImageViewer, copyImage } from './image-viewer.js?v=cc51531';
-import { pickEmoji } from './emoji.js?v=cc51531';
-import { toMarkdown } from './markdown.js?v=cc51531';
-import { sharedPath } from './projects.js?v=cc51531';
-import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView, focusedDb } from './views.js?v=cc51531';
-import { importNotion } from './notion-import.js?v=cc51531';
-import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative, fmtSize } from './util.js?v=cc51531';
-import { desktop, invoke, isMobile } from './platform.js?v=cc51531';
+import * as S from './notes-store.js?v=1a9f0e8';
+import * as G from './git.js?v=1a9f0e8';
+import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=1a9f0e8';
+import { openImageViewer, copyImage } from './image-viewer.js?v=1a9f0e8';
+import { pickEmoji } from './emoji.js?v=1a9f0e8';
+import { toMarkdown } from './markdown.js?v=1a9f0e8';
+import { sharedPath } from './projects.js?v=1a9f0e8';
+import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView, focusedDb } from './views.js?v=1a9f0e8';
+import { importNotion } from './notion-import.js?v=1a9f0e8';
+import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative, fmtSize } from './util.js?v=1a9f0e8';
+import { desktop, invoke, isMobile } from './platform.js?v=1a9f0e8';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -121,10 +121,12 @@ export function newNote({ space = host.space(), parent = null, props = null, ope
 // a database it is one of its items (with `props`).
 export function newDatabase({ space = host.space(), parent = null, view = 'table', props = null, open = openPref(parent), block = true } = {}) {
   const db = S.createNote({ space, parent, kind: 'database', props });
-  // the first view takes the place of the list a collection starts with
-  const list = S.getCollection(db.id).views[0];
-  addView(db.id, view);
-  if (view !== 'list') S.deleteView(db.id, list.id);
+  // the first view takes the place of the list a collection starts with (a list keeps that one)
+  if (view !== 'list') {
+    const list = S.getCollection(db.id).views[0];
+    addView(db.id, view);
+    S.deleteView(db.id, list.id);
+  }
   if (parent && block) appendToText(parent, { type: 'database', attrs: { id: db.id } });
   if (open !== 'none') openNote(db.id, open, { focusTitle: true });
   return db;
