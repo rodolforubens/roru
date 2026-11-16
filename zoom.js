@@ -1,12 +1,14 @@
 // Whole-UI zoom, Notion/Claude style:
 //   Ctrl + =  /  Ctrl + -  /  Ctrl + 0  and  Ctrl + mouse wheel (or touchpad pinch).
-// Uses the native WebView zoom (like Electron's setZoomFactor), falling back to CSS zoom, and
-// glides from one level to the next instead of jumping.
-import { store, glider } from './util.js?v=87360ab';
+// Uses the native WebView zoom (like Electron's setZoomFactor), and glides from one level to the
+// next instead of jumping. On the web the zoom is the browser's own, with the same keys: a CSS zoom
+// would put everything placed by its spot on the screen (menus, popups, drags) somewhere else.
+import { store, glider } from './util.js?v=cc51531';
+import { desktop } from './platform.js?v=cc51531';
 
 export const STEPS = [0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3];
 
-let level = clamp(store('zoom') ?? 1);
+let level = desktop ? clamp(store('zoom') ?? 1) : 1;
 const listeners = new Set();
 let hideTimer;
 
@@ -17,9 +19,7 @@ function clamp(z) {
 async function apply(z) {
   try {
     await window.__TAURI__.webview.getCurrentWebview().setZoom(z);
-  } catch {
-    document.documentElement.style.zoom = String(z);
-  }
+  } catch { /* stays as it is */ }
 }
 
 // The zoom drawn now (between two levels while it glides). The webview's zoom is set through the
@@ -59,6 +59,7 @@ function showToast() {
 }
 
 export function initZoom() {
+  if (!desktop) return;
   apply(level);
 
   window.addEventListener('keydown', e => {

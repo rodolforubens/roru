@@ -885,6 +885,7 @@ table.rs-table .code { padding-left: 12px; }
 @media (max-width: 900px) { .sb-hint { display: none; } }
 #sb-zoom { background: none; border: none; border-radius: 5px; padding: 1px 6px; cursor: pointer; color: var(--text-2); font-variant-numeric: tabular-nums; }
 #sb-zoom:hover { background: var(--hover); color: var(--text); }
+html.web #sb-zoom { display: none; } /* the browser's own zoom there (see zoom.js) */
 .sb-hint { color: var(--text-3); }
 
 /* ---------- zoom toast (Notion style) ---------- */
