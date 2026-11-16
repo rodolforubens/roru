@@ -4,13 +4,13 @@
 // anywhere, see canvas.js). Also the properties
 // block of an item's page, which shares the value editors with the table.
 // A Branch property links a note to a branch of one of the space's repositories (notes as tasks).
-import * as S from './notes-store.js?v=b74f5be';
-import * as G from './git.js?v=b74f5be';
-import { esc, icon, folderName, store } from './util.js?v=b74f5be';
-import { desktop } from './platform.js?v=b74f5be';
-import { localPath, sharedPath } from './projects.js?v=b74f5be';
-import { pickEmoji } from './emoji.js?v=b74f5be';
-import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=b74f5be';
+import * as S from './notes-store.js?v=4301881';
+import * as G from './git.js?v=4301881';
+import { esc, icon, folderName, store } from './util.js?v=4301881';
+import { desktop } from './platform.js?v=4301881';
+import { localPath, sharedPath } from './projects.js?v=4301881';
+import { pickEmoji } from './emoji.js?v=4301881';
+import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=4301881';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -884,9 +884,10 @@ function renameCard(card, id, done = null) {
 
 // A gallery shows the items as tiles in a grid, each with the first picture of its page (else its
 // icon on a color of its own) over its title, and a tile to add an item after the last one. `size`
-// of the view: 'small', 'medium' (the default) or 'large' crop the pictures to squares; 'aspect'
-// keeps each picture's shape, in rows of one height that fill the width, like a photo library.
-const SIZES = { small: 'Small', medium: 'Medium', large: 'Large', aspect: 'Maintain aspect' };
+// of the view ('small', 'medium', the default, or 'large') is how big the tiles are: squares the
+// pictures are cropped to, or with `aspect` each picture's shape, in rows of one height that fill
+// the width, like a photo library.
+const SIZES = { small: 'Small', medium: 'Medium', large: 'Large' };
 const sizeOf = view => (SIZES[view.size] ? view.size : 'medium');
 const hueOf = text => [...(text || 'x')].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) % 360, 7);
 const ratios = new Map(); // a picture -> its width / height, known once it has loaded
@@ -898,7 +899,7 @@ function galleryHtml(view, notes) {
       <div class="gl-ct ${n.title ? '' : 'untitled'}">${esc(n.title || 'Untitled')}</div>
       <button class="cv-btn bd-edit" data-cv="rename-card" title="Rename">${icon('pencil')}</button></div>`;
   // (the last thing in the rows of 'aspect' takes the room left in the last one, so its tiles keep their size)
-  return `<div class="gl gl-${sizeOf(view)}">${notes.map(tile).join('')}
+  return `<div class="gl gl-${sizeOf(view)} ${view.aspect ? 'gl-aspect' : ''}">${notes.map(tile).join('')}
     <button class="gl-new" data-cv="new-tile" title="Add an item (right-click: a database)"><span class="gl-pic">${icon('plus')}<span>New</span></span></button><i class="gl-fill"></i></div>`;
 }
 
@@ -1042,7 +1043,8 @@ function viewMenu(x, y, key, c) {
       // (the cards in columns show the start of the item's text; post-its keep their own)
       { label: 'Card preview', items: () => [['', 'None'], ...Object.entries(PREVIEWS)].map(([m, name]) => ({ label: `${name}${(PREVIEWS[view.preview] ? view.preview : '') === m ? '  ✓' : ''}`, run: () => S.updateView(key, view.id, { preview: m || null }) })) }] : []),
     ...(view.type === 'canvas' ? ['-', ...canvasMenuItems(c, key, view, host)] : []),
-    ...(view.type === 'gallery' ? ['-', { label: 'Size', items: () => Object.entries(SIZES).map(([m, name]) => ({ label: `${name}${sizeOf(view) === m ? '  ✓' : ''}`, run: () => S.updateView(key, view.id, { size: m === 'medium' ? null : m }) })) }] : []),
+    ...(view.type === 'gallery' ? ['-', { label: 'Size', items: () => Object.entries(SIZES).map(([m, name]) => ({ label: `${name}${sizeOf(view) === m ? '  ✓' : ''}`, run: () => S.updateView(key, view.id, { size: m === 'medium' ? null : m }) })) },
+      { label: `Maintain aspect${view.aspect ? '  ✓' : ''}`, run: () => S.updateView(key, view.id, { aspect: view.aspect ? null : true }) }] : []),
     ...((view.type === 'table' || view.type === 'board') && col.schema.length ? ['-', ...col.schema.filter(p => p.id !== g?.id).map(p => {
       const hidden = view.hidden?.includes(p.id);
       return { label: `${hidden ? 'Show' : 'Hide'} ${p.name}`, run: () => S.updateView(key, view.id, { hidden: hidden ? view.hidden.filter(x => x !== p.id) : [...(view.hidden || []), p.id] }) };

@@ -1556,12 +1556,12 @@ body:has(.cv-focus) #peek.side:not([hidden]) { position: fixed; }
 .bd-addcol { flex: none; margin-top: 4px; }
 .bd-empty p { margin: 0 0 10px; }
 
-/* a gallery: the items as tiles in a grid, their first picture over their title. Squares of three
-   sizes, or ("Maintain aspect") rows of one height where each tile is as wide as its picture's shape
-   asks (`--ar`) and the row fills the width, like a photo library */
-.gl { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--gs), 1fr)); gap: 12px 10px; align-items: start; padding: 4px 2px; --gs: 170px; }
-.gl-small { --gs: 104px; gap: 8px; }
-.gl-large { --gs: 270px; }
+/* a gallery: the items as tiles in a grid, their first picture over their title, in three sizes.
+   Squares, or ("Maintain aspect") rows of one height where each tile is as wide as its picture's
+   shape asks (`--ar`) and the row fills the width, like a photo library */
+.gl { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--gs), 1fr)); gap: 12px 10px; align-items: start; padding: 4px 2px; --gs: 170px; --gh: 170px; }
+.gl-small { --gs: 104px; --gh: 100px; gap: 8px; }
+.gl-large { --gs: 270px; --gh: 260px; }
 .gl-tile { position: relative; display: flex; flex-direction: column; min-width: 0; cursor: pointer; }
 .gl-pic {
   position: relative; display: grid; place-items: center; aspect-ratio: 1; overflow: hidden; border-radius: 8px;
@@ -1590,14 +1590,13 @@ body:has(.cv-focus) #peek.side:not([hidden]) { position: fixed; }
 .gl-new .ic { width: 15px; height: 15px; }
 .gl-new:hover .gl-pic { border-color: var(--text-3); background: var(--hover); color: var(--text-2); }
 .gl-fill { display: none; }
-.gl-aspect { display: flex; flex-wrap: wrap; --gh: 170px; }
+.gl-aspect { display: flex; flex-wrap: wrap; }
 .gl-aspect .gl-tile, .gl-aspect .gl-new { flex: var(--ar, 1) 1 calc(var(--ar, 1) * var(--gh)); max-width: 100%; }
 .gl-aspect .gl-pic { aspect-ratio: var(--ar, 1); }
 .gl-aspect .gl-fill { display: block; flex: 1000 0 0; height: 0; }
-html.mobile .gl { --gs: 130px; }
-html.mobile .gl-small { --gs: 84px; }
-html.mobile .gl-large { --gs: 240px; }
-html.mobile .gl-aspect { --gh: 120px; }
+html.mobile .gl { --gs: 130px; --gh: 120px; }
+html.mobile .gl-small { --gs: 84px; --gh: 76px; }
+html.mobile .gl-large { --gs: 240px; --gh: 200px; }
 
 /* a board's content preview: the start of each item's text on its card (a large one: more of it,
    under the page's first picture); post-its (below) keep their own and show no picture */
