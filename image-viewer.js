@@ -4,7 +4,7 @@
 // dragging, and the note's other images one arrow away (← → on the keyboard). Ctrl+C, the copy
 // button or the context menu copies the image. Escape, the close button or a click outside the
 // image closes it.
-import { icon, glider } from './util.js?v=eb2580f';
+import { icon, glider } from './util.js?v=ec8a6e9';
 
 const MAX = 16;
 

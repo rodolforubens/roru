@@ -1914,7 +1914,9 @@ html.mobile .gl-large { --gs: 240px; --gh: 200px; }
 
 /* ---------- a phone: one screen at a time (see mobile.js) ---------- */
 #mbar, #mnav { display: none; }
-html.mobile body { height: 100dvh; }
+/* (the height that is seen: on iOS the keyboard covers the page instead of making it shorter, see mobile.js) */
+html.mobile, html.mobile body { height: var(--vvh, 100dvh); }
+html.mobile { overflow: hidden; }
 /* no scrollbars taking room, like the phone's own apps */
 html.mobile ::-webkit-scrollbar { width: 0; height: 0; }
 html.mobile * { scrollbar-width: none; }

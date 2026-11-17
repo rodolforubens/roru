@@ -4,10 +4,10 @@
 // the phone's back button, through the browser history) and has the screen's menu, and the bar at
 // the bottom goes home, searches and makes a new page. Home lists the recent notes, the projects
 // and Home's notes.
-import * as S from './notes-store.js?v=eb2580f';
-import * as P from './projects.js?v=eb2580f';
-import { isMobile } from './platform.js?v=eb2580f';
-import { esc, icon, store } from './util.js?v=eb2580f';
+import * as S from './notes-store.js?v=ec8a6e9';
+import * as P from './projects.js?v=ec8a6e9';
+import { isMobile, onMobileChange } from './platform.js?v=ec8a6e9';
+import { esc, icon, store } from './util.js?v=ec8a6e9';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -204,6 +204,27 @@ function initTools() {
   document.addEventListener('focusin', sync);
   document.addEventListener('focusout', () => setTimeout(sync));
   document.addEventListener('selectionchange', sync);
+
+  // The keyboard: Android makes the page shorter for it (the viewport's interactive-widget, see
+  // index.html), so the toolbar sits right over it. iOS doesn't: it draws the keyboard over the page
+  // and scrolls the page up under it, which left the toolbar behind the keyboard. So the page takes
+  // the height that is really seen (`--vvh`) and is put back at the top.
+  const vv = window.visualViewport;
+  if (!vv) return;
+  let shown = 0;
+  const fit = () => {
+    const on = isMobile();
+    document.documentElement.style.setProperty('--vvh', on ? `${Math.round(vv.height)}px` : '');
+    if (!on) return;
+    if (vv.offsetTop || scrollY) scrollTo(0, 0);
+    // (the text has less room now: the caret stays in sight)
+    if (typing && Math.abs(vv.height - shown) > 1) requestAnimationFrame(() => typing?.commands.scrollIntoView());
+    shown = vv.height;
+  };
+  vv.addEventListener('resize', fit);
+  vv.addEventListener('scroll', fit);
+  onMobileChange(fit);
+  fit();
 }
 
 function paintTools() {
