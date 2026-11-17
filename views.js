@@ -4,13 +4,13 @@
 // anywhere, see canvas.js). Also the properties
 // block of an item's page, which shares the value editors with the table.
 // A Branch property links a note to a branch of one of the space's repositories (notes as tasks).
-import * as S from './notes-store.js?v=0882704';
-import * as G from './git.js?v=0882704';
-import { esc, icon, folderName, store } from './util.js?v=0882704';
-import { desktop } from './platform.js?v=0882704';
-import { localPath, sharedPath } from './projects.js?v=0882704';
-import { pickEmoji } from './emoji.js?v=0882704';
-import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=0882704';
+import * as S from './notes-store.js?v=937799c';
+import * as G from './git.js?v=937799c';
+import { esc, icon, folderName, store } from './util.js?v=937799c';
+import { desktop } from './platform.js?v=937799c';
+import { localPath, sharedPath } from './projects.js?v=937799c';
+import { pickEmoji } from './emoji.js?v=937799c';
+import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=937799c';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -1207,6 +1207,12 @@ function bindCollection(c) {
     }
     const cell = e.target.closest('td.vt-cell');
     if (cell) return editValue(cell, id, propOf(key, cell.dataset.prop));
+    // a click on a gallery tile's title renames the item there (Ctrl+click still opens it)
+    const title = e.target.closest('.gl-ct');
+    if (title && !e.ctrlKey && !e.metaKey) {
+      select(c, []);
+      return renameCard(title.closest('.gl-tile'), id);
+    }
     if (e.target.closest(CARD)) {
       select(c, []);
       return c.open(id, e, 'board');

@@ -1580,6 +1580,8 @@ body:has(.cv-focus) #peek.side:not([hidden]) { position: fixed; }
 .gl-ct { height: 24px; padding: 5px 2px 0; overflow: hidden; font-size: 12.5px; font-weight: 500; line-height: 19px; white-space: nowrap; text-overflow: ellipsis; }
 .gl-small .gl-ct { font-size: 12px; }
 .gl-ct.untitled { color: var(--text-3); }
+.gl-ct { cursor: text; }
+.gl-ct:hover { text-decoration: underline; text-decoration-color: var(--text-3); text-underline-offset: 3px; }
 .gl-tile:hover .gl-pic { box-shadow: 0 0 0 1px var(--text-3); }
 .gl-tile:hover .bd-edit { visibility: visible; }
 .gl-tile.renaming .bd-edit { display: none; }
