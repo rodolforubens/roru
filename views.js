@@ -4,13 +4,13 @@
 // anywhere, see canvas.js). Also the properties
 // block of an item's page, which shares the value editors with the table.
 // A Branch property links a note to a branch of one of the space's repositories (notes as tasks).
-import * as S from './notes-store.js?v=ec8a6e9';
-import * as G from './git.js?v=ec8a6e9';
-import { esc, icon, folderName, store } from './util.js?v=ec8a6e9';
-import { desktop } from './platform.js?v=ec8a6e9';
-import { localPath, sharedPath } from './projects.js?v=ec8a6e9';
-import { pickEmoji } from './emoji.js?v=ec8a6e9';
-import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=ec8a6e9';
+import * as S from './notes-store.js?v=0762a09';
+import * as G from './git.js?v=0762a09';
+import { esc, icon, folderName, store } from './util.js?v=0762a09';
+import { desktop } from './platform.js?v=0762a09';
+import { localPath, sharedPath } from './projects.js?v=0762a09';
+import { pickEmoji } from './emoji.js?v=0762a09';
+import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=0762a09';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -612,10 +612,13 @@ function paint(c) {
   // a canvas keeps the keys when it is drawn again
   const focused = !!$('.cvs', c.el)?.contains(document.activeElement);
   c.view = view.id;
+  // a view of a kind this version doesn't know (made by a newer one, on the web or another device)
+  // shows the items as a list, so the database is still there
+  const known = !!VIEWS[view.type];
   const drag = c.focused ? 'data-tauri-drag-region' : '';
   c.el.innerHTML = `<div class="cv cv-${c.ctx}">
     <div class="cv-bar" ${drag}>
-      <div class="cv-tabs" ${drag}>${col.views.map(v => `<button class="cv-tab ${v === view ? 'on' : ''}" data-view="${v.id}">${icon(v.icon || VIEWS[v.type][1])}<span>${esc(v.name)}</span></button>`).join('')}
+      <div class="cv-tabs" ${drag}>${col.views.map(v => `<button class="cv-tab ${v === view ? 'on' : ''}" data-view="${v.id}">${icon(v.icon || VIEWS[v.type]?.[1] || 'table')}<span>${esc(v.name)}</span></button>`).join('')}
         <button class="cv-btn" data-cv="add-view" title="Add a view">${icon('plus')}</button></div>
       <span class="spacer" ${drag}></span>
       <button class="cv-btn" data-cv="focus-mode" title="${c.focused ? `Leave the focus mode (Esc${desktop ? ' or F11' : ''})` : `Focus mode: the view takes the whole window${desktop ? ' (F11)' : ''}`}">${icon(c.focused ? 'unfocus' : 'focus')}</button>
@@ -623,10 +626,13 @@ function paint(c) {
       <button class="cv-btn" data-cv="view-menu" title="View options">${icon('more')}</button>
       <button class="btn-sm" data-cv="new">${icon('plus')}New</button>
     </div>
-    <div class="cv-body cv-${view.type}"></div>
+    <div class="cv-body cv-${known ? view.type : 'list'}"></div>
   </div>`;
   const body = $('.cv-body', c.el);
-  if (view.type === 'list') {
+  if (!known) {
+    body.innerHTML = `<div class="cv-empty">This view needs a newer version of the app: its items are shown as a list.</div><div class="cv-tree"></div>`;
+    if (notes.length) host.mountTree($('.cv-tree', body), c.space, { parent: c.parent, open: c.open });
+  } else if (view.type === 'list') {
     // (with a "New" at its end, like the table's: the item's title is typed in its row)
     body.innerHTML = `<div class="cv-tree"></div><button class="vt-new" data-cv="new-row">${icon('plus')}New</button>`;
     if (notes.length || c.ctx === 'panel') host.mountTree($('.cv-tree', body), c.space, { parent: c.parent, open: c.open });
@@ -648,7 +654,7 @@ function paint(c) {
     if (x) [x.scrollLeft, x.scrollTop] = scrolled[i];
   });
   // the selection keeps the notes that are still shown (a canvas has a selection of its own)
-  const here = new Set(view.type === 'list' || view.type === 'canvas' ? [] : notes.map(n => n.id));
+  const here = new Set(!known || view.type === 'list' || view.type === 'canvas' ? [] : notes.map(n => n.id));
   c.sel = new Set([...(c.sel || [])].filter(id => here.has(id)));
   paintSelection(c);
 }
