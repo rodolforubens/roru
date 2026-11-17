@@ -32,11 +32,11 @@
 // A deleted note goes to the trash with what is inside it: it gets `trashed` (when), and it and the
 // notes inside it leave every list (getNote, childrenOf…) until it is restored or deleted for good
 // (see "The trash" below).
-import { desktop, invoke, convertFileSrc } from './platform.js?v=4d4593c';
-import { db, currentUser } from './account.js?v=4d4593c';
-import { createMirror, clone, reportStatus } from './mirror.js?v=4d4593c';
-import { Y, updateYFragment, yDocToProsemirrorJSON } from './vendor/tiptap.js?v=4d4593c';
-import { noteSchema, fitToSchema } from './editor.js?v=4d4593c';
+import { desktop, invoke, convertFileSrc } from './platform.js?v=0882704';
+import { db, currentUser } from './account.js?v=0882704';
+import { createMirror, clone, reportStatus } from './mirror.js?v=0882704';
+import { Y, updateYFragment, yDocToProsemirrorJSON } from './vendor/tiptap.js?v=0882704';
+import { noteSchema, fitToSchema } from './editor.js?v=0882704';
 
 const SAVE_DELAY = 300; // ms after the last edit (files on this computer)
 
@@ -161,6 +161,26 @@ export async function saveFile(id, name, bytes) {
 export function onNotesChange(fn) {
   listeners.add(fn);
   return () => listeners.delete(fn);
+}
+
+// `fn(id)` runs after a note's text changed (here, in any editor of it, or elsewhere while its
+// document is read here), a moment after the changes stop, so the cards, tiles and previews that
+// show its first picture and the start of its text can show them again (its `updated` follows the
+// text only once a minute).
+// `textStamp(id)` changes with it at once: what a preview of the text was read at.
+const textListeners = new Set(), textTimers = new Map(), textRevs = new Map();
+export const textStamp = id => `${lookup(id)?.updated ?? ''}:${textRevs.get(id) || 0}`;
+export function onTextChange(fn) {
+  textListeners.add(fn);
+  return () => textListeners.delete(fn);
+}
+function textChanged(id) {
+  textRevs.set(id, (textRevs.get(id) || 0) + 1);
+  clearTimeout(textTimers.get(id));
+  textTimers.set(id, setTimeout(() => {
+    textTimers.delete(id);
+    for (const fn of textListeners) fn(id);
+  }, 400));
 }
 
 // Collections of notes that are not databases (only looked at) are not saved.
@@ -885,6 +905,7 @@ export function saveContent(id, doc) {
     return;
   }
   contents.set(id, doc);
+  textChanged(id);
   schedule(id, () => invoke('write_text', { path: file(`${id}.json`), content: JSON.stringify(doc) }));
   saveIndex();
 }
@@ -948,7 +969,7 @@ function blankDoc(id) {
   docs.set(id, d);
   return d;
 }
-const listen = d => d.ydoc.on('update', (u, origin) => { if (origin !== REMOTE) queue(d, u); });
+const listen = d => d.ydoc.on('update', (u, origin) => { textChanged(d.id); if (origin !== REMOTE) queue(d, u); });
 
 // A new note's document: there is nothing to read.
 function newDoc(id) {

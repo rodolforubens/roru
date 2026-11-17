@@ -4,13 +4,13 @@
 // anywhere, see canvas.js). Also the properties
 // block of an item's page, which shares the value editors with the table.
 // A Branch property links a note to a branch of one of the space's repositories (notes as tasks).
-import * as S from './notes-store.js?v=4d4593c';
-import * as G from './git.js?v=4d4593c';
-import { esc, icon, folderName, store } from './util.js?v=4d4593c';
-import { desktop } from './platform.js?v=4d4593c';
-import { localPath, sharedPath } from './projects.js?v=4d4593c';
-import { pickEmoji } from './emoji.js?v=4d4593c';
-import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=4d4593c';
+import * as S from './notes-store.js?v=0882704';
+import * as G from './git.js?v=0882704';
+import { esc, icon, folderName, store } from './util.js?v=0882704';
+import { desktop } from './platform.js?v=0882704';
+import { localPath, sharedPath } from './projects.js?v=0882704';
+import { pickEmoji } from './emoji.js?v=0882704';
+import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=0882704';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -618,6 +618,14 @@ function focusTarget() {
 }
 
 // After notes or collections changed; the ones being typed in wait until the typing ends.
+// After an item's text changed: the views of its database show its picture and text again.
+export function repaintItem(id) {
+  const n = S.getNote(id);
+  if (!n?.parent) return;
+  snippets.delete(id);
+  for (const c of mounted) if (!c.el.isConnected) mounted.delete(c); else if (c.parent === n.parent) paint(c);
+}
+
 export function repaintViews() {
   for (const c of mounted) if (c.el.isConnected) paint(c); else mounted.delete(c);
   for (const b of blocks) if (b.el.isConnected) paintProps(b); else blocks.delete(b);
@@ -884,7 +892,7 @@ function fillSnippets(c, notes, cover) {
       card.prepend(img);
     };
     const hit = snippets.get(n.id);
-    if (hit?.updated === n.updated) put(hit);
+    if (hit?.updated === S.textStamp(n.id)) put(hit);
     else host.preview(n.id).then(p => { snippets.set(n.id, p); put(p); }, () => {});
   }
 }
@@ -970,7 +978,7 @@ function fillGallery(c, notes) {
       pic.append(img);
     };
     const hit = snippets.get(n.id);
-    if (hit?.updated === n.updated) put(hit);
+    if (hit?.updated === S.textStamp(n.id)) put(hit);
     else host.preview(n.id).then(p => { snippets.set(n.id, p); put(p); }, () => {});
   }
 }

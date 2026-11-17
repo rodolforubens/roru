@@ -11,8 +11,8 @@
 // copy hides the item. Delete deletes what is selected (items to the trash, after a prompt), and F
 // frames it. The wheel zooms it (Ctrl + wheel moves it, or the other way around), a pinch too.
 // Where the canvas is looked at (moved and zoomed) is kept on this device only.
-import * as S from './notes-store.js?v=4d4593c';
-import { esc, icon, store, glider, plural } from './util.js?v=4d4593c';
+import * as S from './notes-store.js?v=0882704';
+import { esc, icon, store, glider, plural } from './util.js?v=0882704';
 
 const newId = () => crypto.randomUUID?.() ?? Date.now().toString(36) + Math.random().toString(36).slice(2);
 const clone = v => JSON.parse(JSON.stringify(v ?? null));
@@ -479,7 +479,7 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
   // The item's picture and the start of its text.
   async function previewFor(item) {
     const hit = previews.get(item.id);
-    if (hit && hit.updated === item.updated) return hit;
+    if (hit && hit.updated === S.textStamp(item.id)) return hit;
     const p = await host.preview(item.id).catch(() => null);
     if (p) previews.set(item.id, p);
     return p;
@@ -533,7 +533,7 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
       try {
         const src = await host.addImage(item.id, file);
         ratios.set(src, ratio);
-        const p2 = { updated: S.getNote(item.id)?.updated, cover: src, text: '' };
+        const p2 = { updated: S.textStamp(item.id), cover: src, text: '' };
         previews.set(item.id, p2);
         c.canvas?.api?.fill(item.id, p2);
       } catch (e) {
@@ -1303,7 +1303,7 @@ export function mountCanvas(body, c, { key, view, items, host, repaint, focus = 
   }
   for (const id of new Set(nodes.filter(n => n.note && (n.shape === 'image' || n.shape === 'sticky')).map(n => n.note))) {
     const item = byId.get(id), hit = previews.get(id);
-    if (hit && hit.updated === item.updated) fill(id, hit);
+    if (hit && hit.updated === S.textStamp(id)) fill(id, hit);
     else host.preview(id).then(p => { previews.set(id, p); fill(id, p); }, () => {});
   }
 

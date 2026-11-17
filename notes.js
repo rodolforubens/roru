@@ -5,17 +5,17 @@
 // below as it was. Pages nest in other pages through their text (a link to the nested page, or a
 // database block); databases show in the tree as one item. Tabs and spaces belong to app.js (see
 // initNotesUi); the table, board and canvas views and the properties are in views.js (and canvas.js).
-import * as S from './notes-store.js?v=4d4593c';
-import * as G from './git.js?v=4d4593c';
-import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=4d4593c';
-import { openImageViewer, copyImage } from './image-viewer.js?v=4d4593c';
-import { pickEmoji } from './emoji.js?v=4d4593c';
-import { toMarkdown } from './markdown.js?v=4d4593c';
-import { sharedPath } from './projects.js?v=4d4593c';
-import { initViews, renderCollection, renderProps, repaintViews, valueText, createBranchFor, addView, focusedDb, VIEW_KINDS, viewName } from './views.js?v=4d4593c';
-import { importNotion } from './notion-import.js?v=4d4593c';
-import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative, fmtSize } from './util.js?v=4d4593c';
-import { desktop, invoke, isMobile } from './platform.js?v=4d4593c';
+import * as S from './notes-store.js?v=0882704';
+import * as G from './git.js?v=0882704';
+import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=0882704';
+import { openImageViewer, copyImage } from './image-viewer.js?v=0882704';
+import { pickEmoji } from './emoji.js?v=0882704';
+import { toMarkdown } from './markdown.js?v=0882704';
+import { sharedPath } from './projects.js?v=0882704';
+import { initViews, renderCollection, renderProps, repaintViews, repaintItem, valueText, createBranchFor, addView, focusedDb, VIEW_KINDS, viewName } from './views.js?v=0882704';
+import { importNotion } from './notion-import.js?v=0882704';
+import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative, fmtSize } from './util.js?v=0882704';
+import { desktop, invoke, isMobile } from './platform.js?v=0882704';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -57,6 +57,15 @@ export async function initNotesUi(h) {
     showMenu: h.showMenu, modal: h.modal, confirmBox: h.confirmBox, toast: h.toast,
   });
   await S.initNotes();
+  // a page's text changed (in a tab, a peek, or elsewhere): the cards and tiles showing it read its
+  // first picture and the start of its text again
+  S.onTextChange(id => {
+    const n = S.getNote(id);
+    if (!n) return;
+    previews.delete(id);
+    repaintItem(id);
+    if (n.parent == null) for (const p of cardPanels) if (p.el.isConnected && p.space === n.space) paintCards(p);
+  });
   S.onNotesChange(({ ids, removed }) => {
     // deleted elsewhere: their tabs close
     if (removed?.length) host.closeTabs(removed);
@@ -979,7 +988,7 @@ function paintCards(panel) {
   // the covers and the start of the text come as each note's text is read
   for (const n of notes) {
     const hit = previews.get(n.id);
-    if (hit?.updated === n.updated) fillCard(panel.el, n.id, hit);
+    if (hit?.updated === S.textStamp(n.id)) fillCard(panel.el, n.id, hit);
     else previewOf(n.id).then(p => fillCard(panel.el, n.id, p), () => {});
   }
 }
@@ -1003,7 +1012,8 @@ function cardHtml(n) {
 // as plain text. `lead`: that picture is what the text starts with (nothing but empty lines before it).
 async function previewOf(id) {
   const n = S.getNote(id);
-  if (!n || n.kind === 'database') return { updated: n?.updated };
+  const stamp = S.textStamp(id); // (before reading: a change made meanwhile reads it again)
+  if (!n || n.kind === 'database') return { updated: stamp };
   const doc = await S.loadContent(id);
   let cover = null;
   const parts = [];
@@ -1020,7 +1030,7 @@ async function previewOf(id) {
   const start = first?.type === 'paragraph' ? first.content.find(x => x.type !== 'text' || x.text.trim()) : first;
   const lead = !!cover && (start?.type === 'image' || start?.type === 'embed');
   const text = parts.join('').replace(/\s+/g, ' ').trim();
-  const p = { updated: n.updated, cover, lead, text: text.length > 220 ? `${text.slice(0, 219).trimEnd()}…` : text };
+  const p = { updated: stamp, cover, lead, text: text.length > 220 ? `${text.slice(0, 219).trimEnd()}…` : text };
   previews.set(id, p);
   return p;
 }
