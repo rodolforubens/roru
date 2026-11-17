@@ -1,20 +1,20 @@
-import * as G from './git.js?v=ddd8e97';
-import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=ddd8e97';
-import { renderDiff, renderSubmodule, parseSubmoduleLog, loadSizes } from './diff.js?v=ddd8e97';
-import { loadMedia } from './media-diff.js?v=ddd8e97';
-import { partialPatch } from './patch.js?v=ddd8e97';
-import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=ddd8e97';
-import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=ddd8e97';
-import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=ddd8e97';
-import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=ddd8e97';
-import * as P from './projects.js?v=ddd8e97';
-import { syncStatus, onSyncStatus } from './mirror.js?v=ddd8e97';
-import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=ddd8e97';
-import * as S from './notes-store.js?v=ddd8e97';
-import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=ddd8e97';
-import * as M from './mobile.js?v=ddd8e97';
-import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=ddd8e97';
-import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, databaseKinds, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=ddd8e97';
+import * as G from './git.js?v=37ddf7d';
+import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=37ddf7d';
+import { renderDiff, renderSubmodule, parseSubmoduleLog, loadSizes } from './diff.js?v=37ddf7d';
+import { loadMedia } from './media-diff.js?v=37ddf7d';
+import { partialPatch } from './patch.js?v=37ddf7d';
+import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=37ddf7d';
+import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=37ddf7d';
+import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=37ddf7d';
+import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=37ddf7d';
+import * as P from './projects.js?v=37ddf7d';
+import { syncStatus, onSyncStatus } from './mirror.js?v=37ddf7d';
+import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=37ddf7d';
+import * as S from './notes-store.js?v=37ddf7d';
+import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=37ddf7d';
+import * as M from './mobile.js?v=37ddf7d';
+import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=37ddf7d';
+import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, databaseKinds, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=37ddf7d';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -511,7 +511,10 @@ async function checkRemoteTags(repo) {
     if (spin) removePending(spin);
     if (entry.checking === token) {
       entry.checking = null;
-      if (repo === state.repo && state.refs) renderSidebar();
+      if (repo === state.repo && state.refs) {
+        renderSidebar();
+        if ($('.commit-list')) renderCommitList(); // the tags' labels
+      }
     }
   }
 }
@@ -1905,6 +1908,7 @@ function tagMenuItems(name) {
   const remotes = state.refs.remoteNames;
   return [
     { label: `Checkout tag "${name}"`, run: () => run('Checkout', () => g(['checkout', name]), { busy: 'Checking out', on: [at.tag(name)] }) },
+    ...movedOn(name).map(rm => ({ label: `Move to its commit on "${rm}"…`, run: () => moveTagToRemote(rm, name) })),
     ...remotes.map(rm => ({ label: `Push tag to "${rm}"`, run: () => pushTags(rm, name) })),
     { label: 'Copy name', run: () => copy(name) },
     '-',
@@ -1916,11 +1920,19 @@ function tagMenuItems(name) {
 // The remotes that have a tag, from their last check.
 const tagRemotes = name => Object.entries(remoteTags.get(state.repo)?.remotes || {}).filter(([, tags]) => tags.has(name)).map(([rm]) => rm);
 
-// A tag only on the remotes: fetched from one of them, or deleted there.
+// The remotes where a tag that is here points at another commit.
+function movedOn(name) {
+  const sha = state.refs.tags.find(t => t.name === name)?.sha;
+  return sha ? tagRemotes(name).filter(rm => remoteTags.get(state.repo).remotes[rm].get(name) !== sha) : [];
+}
+
+// A tag on the remotes but not here (or here at another commit, from the remote's label in the
+// history): fetched from one of them (moving the local one), or deleted there.
 function remoteTagMenuItems(name) {
-  const on = tagRemotes(name);
+  const here = state.refs.tags.some(t => t.name === name), on = here ? movedOn(name) : tagRemotes(name);
   return [
-    ...on.map(rm => ({ label: `Fetch tag from "${rm}"`, run: () => run('Fetch tag', () => fetchTags(rm, [name]), { success: `Tag "${name}" fetched from "${rm}"`, busy: 'Fetching', on: [at.remoteTag(name)] }) })),
+    ...on.map(rm => (here ? { label: `Move the local tag to its commit on "${rm}"…`, run: () => moveTagToRemote(rm, name) }
+      : { label: `Fetch tag from "${rm}"`, run: () => run('Fetch tag', () => fetchTags(rm, [name]), { success: `Tag "${name}" fetched from "${rm}"`, busy: 'Fetching', on: [at.remoteTag(name)] }) })),
     { label: 'Copy name', run: () => copy(name) },
     '-',
     ...on.map(rm => ({ label: `Delete tag from "${rm}"…`, danger: true, run: () => deleteRemoteTag(name, rm) })),
@@ -2115,15 +2127,41 @@ function headSha() {
     || state.log.find(c => c.refs.some(r => r === 'HEAD' || r.startsWith('HEAD -> ')))?.sha;
 }
 
+// The main remote's tags (or the first remote's whose tags are known), for the labels of the
+// commits: `tags`, name → its commit there; `here`, the local ones; and `away`, commit → the tags
+// the remote has there but not here at that commit (only there, or here at another commit).
+// Null while no remote's tags are known.
+function remoteTagSpots() {
+  const remotes = remoteTags.get(state.repo)?.remotes || {}, main = mainRemote();
+  const rm = remotes[main] ? main : Object.keys(remotes)[0];
+  if (!rm) return null;
+  const here = new Map(state.refs.tags.map(t => [t.name, t.sha])), away = new Map();
+  for (const [name, sha] of remotes[rm]) if (here.get(name) !== sha) away.set(sha, [...(away.get(sha) || []), name]);
+  return { rm, tags: remotes[rm], here, away };
+}
+
+// A tag's label on the commit `sha`, like a branch's: a house when it is here at that commit and a
+// cloud when the remote has it there; one only the remote has there (`local` false) is dashed.
+function tagBadge(name, sha, local, spots) {
+  const there = spots?.tags.get(name), here = spots?.here.get(name), rm = spots && `"${spots.rm}"`;
+  const segs = !spots ? '' : [local && 'home', there === sha && 'cloud'].filter(Boolean).map(n => `<span class="seg">${icon(n)}</span>`).join('');
+  const title = [name];
+  if (spots && local) title.push(there === sha ? `Here and on ${rm}` : there ? `Here; on ${rm} at another commit (${there.slice(0, 7)})` : `Here, not on ${rm}`);
+  else if (spots) title.push(here ? `On ${rm}; here at another commit (${here.slice(0, 7)})` : `Only on ${rm}, not here`);
+  const data = local ? `data-ref-tag="${esc(name)}"` : `data-ref-remote-tag="${esc(name)}"`;
+  return `<span class="ref tag${segs ? ' has-segs' : ''}${local ? '' : ' remote'}" title="${esc(title.join('\n'))}" ${data}>${segs}${icon('tag')}${esc(name)}</span>`;
+}
+
 // Branch labels for a commit: a local branch and its remote counterpart on the same commit share one
 // label, with a house (local) and/or cloud (remote) icon. Labels take the color of the commit's lane.
-function refBadges(c, color) {
+// Tags get the same icons, from the last check of the remotes' tags (`spots`, remoteTagSpots).
+function refBadges(c, color, spots) {
   const remotes = state.refs?.remoteNames || [];
   const branches = new Map(); // short name -> { key, local, head, remote }
   const other = [];
   for (const r of c.refs) {
     if (r === 'HEAD') { other.push(`<span class="ref detached">HEAD</span>`); continue; }
-    if (r.startsWith('tag: ')) { other.push(`<span class="ref tag" data-ref-tag="${esc(r.slice(5))}">${icon('tag')}${esc(r.slice(5))}</span>`); continue; }
+    if (r.startsWith('tag: ')) { other.push(tagBadge(r.slice(5), c.sha, true, spots)); continue; }
     const head = r.startsWith('HEAD -> ');
     const name = head ? r.slice(8) : r;
     const rm = remotes.find(x => name.startsWith(x + '/'));
@@ -2140,13 +2178,15 @@ function refBadges(c, color) {
     const data = (b.local ? ` data-ref-local="${esc(b.key)}"` : '') + (b.remote ? ` data-ref-remote="${esc(b.remote)}"` : '');
     return `<span class="ref branch${b.head ? ' head' : ''}" style="--ref: ${color}" title="${esc(title)}"${data}>${icons}${esc(b.local ? b.key : b.remote)}</span>`;
   });
+  for (const name of spots?.away.get(c.sha) || []) other.push(tagBadge(name, c.sha, false, spots));
   return labels.concat(other).join('');
 }
 
 // A label stands for a tag, or for a local branch and/or its remote counterpart: a shared label
 // gets the local branch's menu plus deleting the remote one.
-function badgeMenuItems({ refLocal, refRemote, refTag }) {
+function badgeMenuItems({ refLocal, refRemote, refTag, refRemoteTag }) {
   if (refTag) return tagMenuItems(refTag);
+  if (refRemoteTag) return remoteTagMenuItems(refRemoteTag);
   if (!refLocal) return remoteBranchMenuItems(refRemote);
   const items = branchMenuItems(refLocal);
   return refRemote ? [...items, deleteRemoteBranchItem(refRemote)] : items;
@@ -2155,12 +2195,12 @@ function badgeMenuItems({ refLocal, refRemote, refTag }) {
 function renderCommitList() {
   const list = $('.commit-list');
   const maxCols = Math.min(12, Math.max(1, ...state.graph.map(r => r.width)));
-  const head = headSha();
+  const head = headSha(), spots = remoteTagSpots();
   const html = state.log.map((c, i) => {
     const isHead = c.sha === head;
     return `<div class="commit-row ${isHead ? 'is-head' : ''} ${i === state.selected ? 'selected' : ''}" data-i="${i}" data-sha="${c.sha}">
       ${graphSvg(state.graph[i], c, isHead, maxCols)}
-      <div class="c-subject">${refBadges(c, laneColor(state.graph[i]?.col ?? 0))}${esc(c.subject)}</div>
+      <div class="c-subject">${refBadges(c, laneColor(state.graph[i]?.col ?? 0), spots)}${esc(c.subject)}</div>
       <div class="c-author" title="${esc(c.email)}">${esc(c.author)}</div>
       <div class="c-date" title="${esc(fmtDate(c.time))}">${esc(fmtRelative(c.time))}</div>
       <div class="c-sha">${c.sha.slice(0, 7)}</div>
@@ -2192,7 +2232,7 @@ function bindHistoryEvents(root) {
     const row = e.target.closest('.commit-row');
     if (!row) return;
     selectCommit(+row.dataset.i);
-    const badge = e.target.closest('[data-ref-local], [data-ref-remote], [data-ref-tag]');
+    const badge = e.target.closest('[data-ref-local], [data-ref-remote], [data-ref-tag], [data-ref-remote-tag]');
     if (badge) return showMenu(e.clientX, e.clientY, badgeMenuItems(badge.dataset));
     commitMenu(e.clientX, e.clientY, state.log[+row.dataset.i]);
   });
@@ -3120,6 +3160,14 @@ async function createTag(sha) {
 // Fetches these tags from a remote, and nothing else: not its branches, nor a tag that is here at
 // another commit (git refuses to replace it).
 const fetchTags = (remote, names) => g(['fetch', '--no-tags', remote, ...names.map(n => `refs/tags/${n}:refs/tags/${n}`)]);
+
+// A local tag at another commit than on the remote is fetched over it, after a prompt: where it
+// pointed here is lost (tags keep no log).
+async function moveTagToRemote(remote, name) {
+  const sha = remoteTags.get(state.repo)?.remotes[remote]?.get(name);
+  if (!(await confirmBox('Move tag', `Move the local tag "${name}" to the commit it points at on "${remote}"${sha ? ` (${sha.slice(0, 7)})` : ''}? Where it points here is lost.`, 'Move tag'))) return;
+  run('Move tag', () => g(['fetch', '--no-tags', remote, `+refs/tags/${name}:refs/tags/${name}`]), { success: `Tag "${name}" moved to its commit on "${remote}"`, busy: 'Moving', on: [at.tag(name)] });
+}
 
 // The tags only on the remotes, each from the main remote when it has it.
 function fetchMissingTags() {

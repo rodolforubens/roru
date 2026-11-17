@@ -11,8 +11,8 @@
 // copy hides the item. Delete deletes what is selected (items to the trash, after a prompt), and F
 // frames it. The wheel zooms it (Ctrl + wheel moves it, or the other way around), a pinch too.
 // Where the canvas is looked at (moved and zoomed) is kept on this device only.
-import * as S from './notes-store.js?v=ddd8e97';
-import { esc, icon, store, glider, plural } from './util.js?v=ddd8e97';
+import * as S from './notes-store.js?v=37ddf7d';
+import { esc, icon, store, glider, plural } from './util.js?v=37ddf7d';
 
 const newId = () => crypto.randomUUID?.() ?? Date.now().toString(36) + Math.random().toString(36).slice(2);
 const clone = v => JSON.parse(JSON.stringify(v ?? null));

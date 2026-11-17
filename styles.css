@@ -429,10 +429,13 @@ body.no-repo #repo-actions, body.no-repo [data-action="refresh"] { visibility: h
 }
 .ref.branch { background: color-mix(in srgb, var(--ref) 18%, transparent); color: var(--ref); border-color: var(--ref); }
 .ref.branch.head { background: var(--ref); color: var(--bg); }
-.ref.branch { padding-left: 0; gap: 0; align-items: stretch; }
-.ref.branch .seg { display: inline-flex; align-items: center; justify-content: center; width: 17px; border-right: 1px solid color-mix(in srgb, currentColor 45%, transparent); }
-.ref.branch .seg:last-of-type { margin-right: 5px; }
+.ref.branch, .ref.has-segs { padding-left: 0; gap: 0; align-items: stretch; }
+.ref .seg { display: inline-flex; align-items: center; justify-content: center; width: 17px; border-right: 1px solid color-mix(in srgb, currentColor 45%, transparent); }
+.ref .seg:last-of-type { margin-right: 5px; }
 .ref.tag { background: color-mix(in srgb, var(--yellow) 18%, transparent); color: var(--yellow); border-color: var(--yellow); }
+.ref.tag.has-segs > .ic { align-self: center; margin-right: 3px; }
+/* a tag the remote has at this commit, but not here */
+.ref.tag.remote { border-style: dashed; background: transparent; }
 .ref.detached { background: var(--red); color: var(--bg); border-color: var(--red); }
 .ref .ic { width: 11px; height: 11px; }
 
