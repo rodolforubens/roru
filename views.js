@@ -4,13 +4,13 @@
 // anywhere, see canvas.js). Also the properties
 // block of an item's page, which shares the value editors with the table.
 // A Branch property links a note to a branch of one of the space's repositories (notes as tasks).
-import * as S from './notes-store.js?v=37ddf7d';
-import * as G from './git.js?v=37ddf7d';
-import { esc, icon, folderName, store } from './util.js?v=37ddf7d';
-import { desktop } from './platform.js?v=37ddf7d';
-import { localPath, sharedPath } from './projects.js?v=37ddf7d';
-import { pickEmoji } from './emoji.js?v=37ddf7d';
-import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=37ddf7d';
+import * as S from './notes-store.js?v=4d4593c';
+import * as G from './git.js?v=4d4593c';
+import { esc, icon, folderName, store } from './util.js?v=4d4593c';
+import { desktop } from './platform.js?v=4d4593c';
+import { localPath, sharedPath } from './projects.js?v=4d4593c';
+import { pickEmoji } from './emoji.js?v=4d4593c';
+import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=4d4593c';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -46,6 +46,44 @@ export function initViews(h) {
     if (c && e.key === 'Delete') { e.preventDefault(); return host.deleteNotes(selection(c)); }
     if (f && e.key === 'Escape' && $('#peek').hidden) { e.preventDefault(); setFocused(f, false); }
   });
+  // Pictures pasted with a gallery under the pointer (or clicked last, in front) become its items
+  addEventListener('paste', e => {
+    if (e.defaultPrevented || $('#modal-root').childElementCount) return;
+    if (e.target.closest?.('input, textarea, [contenteditable="true"]')) return;
+    const files = pictures(e.clipboardData?.files);
+    if (!files.length) return;
+    const c = galleryTarget();
+    if (!c) return;
+    e.preventDefault();
+    addPictures(c, files);
+  });
+}
+
+const pictures = list => [...(list || [])].filter(f => f.type.startsWith('image/'));
+
+// The gallery a paste goes to: the view under the pointer, or else the one clicked last, if a gallery.
+function galleryTarget() {
+  const isGallery = x => x?.el.isConnected && x.el.getClientRects().length && activeView(S.getCollection(S.collectionKey(x.space, x.parent)))?.type === 'gallery';
+  const hovered = [...mounted].filter(x => x.el.matches(':hover'));
+  // (the innermost one, for a gallery shown in an item of another)
+  const under = hovered.find(x => !hovered.some(y => y !== x && x.el.contains(y.el)));
+  if (under) return isGallery(under) ? under : null;
+  return isGallery(lastView) ? lastView : null;
+}
+
+// Pictures pasted or dropped on a gallery: each one an item at its end, with the picture in its page
+// (its title, the file's name, unless it is a generic one like "image" or "Screenshot").
+async function addPictures(c, files) {
+  for (const file of files) {
+    const base = (file.name || '').replace(/\.[^.]+$/, '').trim();
+    const title = /^(image|img|screenshot.*|pasted.*|\d*)$/i.test(base) ? '' : base;
+    const item = S.createNote({ space: c.space, parent: c.parent, title });
+    try {
+      await host.addImage(item.id, file);
+    } catch (err) {
+      host.toast('Could not add the image', 'error', String(err.message || err));
+    }
+  }
 }
 
 export const TYPES = {
@@ -906,7 +944,7 @@ function galleryHtml(view, notes) {
       <button class="cv-btn bd-edit" data-cv="rename-card" title="Rename">${icon('pencil')}</button></div>`;
   // (the last thing in the rows of 'aspect' takes the room left in the last one, so its tiles keep their size)
   return `<div class="gl gl-${sizeOf(view)} ${view.aspect ? 'gl-aspect' : ''}">${notes.map(tile).join('')}
-    <button class="gl-new" data-cv="new-tile" title="Add an item (right-click: a database)"><span class="gl-pic">${icon('plus')}<span>New</span></span></button><i class="gl-fill"></i></div>`;
+    <button class="gl-new" data-cv="new-tile" title="Add an item (right-click: a database; or paste or drop pictures here)"><span class="gl-pic">${icon('plus')}<span>New</span></span></button><i class="gl-fill"></i></div>`;
 }
 
 // The tiles' pictures, as each page is read; a picture's shape is known when it has loaded.
@@ -1297,6 +1335,22 @@ function bindCollection(c) {
     tile = null; // the gallery is drawn again, so "dragend" won't reach it
     tiles = [];
     S.batch(() => ids.forEach(id => S.moveNote(id, c.parent, before)));
+  });
+  // pictures dropped on a gallery become its items (see addPictures)
+  const galleryShown = () => !!el.querySelector(':scope > .cv > .cv-body.cv-gallery');
+  el.addEventListener('dragover', e => {
+    if (tile || !galleryShown() || ![...(e.dataTransfer?.items || [])].some(i => i.kind === 'file' && i.type.startsWith('image/'))) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'copy';
+  });
+  el.addEventListener('drop', e => {
+    if (tile || !galleryShown()) return;
+    const files = pictures(e.dataTransfer?.files);
+    if (!files.length) return;
+    e.preventDefault();
+    e.stopPropagation();
+    addPictures(c, files);
   });
   el.addEventListener('dragend', () => {
     tile = null;

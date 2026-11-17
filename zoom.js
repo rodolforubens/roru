@@ -3,8 +3,8 @@
 // Uses the native WebView zoom (like Electron's setZoomFactor), and glides from one level to the
 // next instead of jumping. On the web the zoom is the browser's own, with the same keys: a CSS zoom
 // would put everything placed by its spot on the screen (menus, popups, drags) somewhere else.
-import { store, glider } from './util.js?v=37ddf7d';
-import { desktop } from './platform.js?v=37ddf7d';
+import { store, glider } from './util.js?v=4d4593c';
+import { desktop } from './platform.js?v=4d4593c';
 
 export const STEPS = [0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3];
 
