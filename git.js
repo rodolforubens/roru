@@ -1,5 +1,5 @@
 // Thin layer over the `git` command exposed by the Rust backend.
-import { invoke } from './platform.js?v=0762a09';
+import { invoke } from './platform.js?v=ddd8e97';
 
 const US = '\x1f'; // field separator
 const RS = '\x1e'; // record separator
@@ -299,6 +299,20 @@ export async function getRefs(repo) {
   }
   res.tags.reverse();
   return res;
+}
+
+// The tags of a remote, as a Map of name → the commit each one points at. Git keeps no copy of a
+// remote's tags, so they are asked over the network; it runs in the background, so it never asks
+// for credentials (Git Credential Manager's window included) and fails instead.
+export async function getRemoteTags(repo, remote) {
+  const out = await git(repo, ['-c', 'credential.interactive=never', 'ls-remote', '--tags', remote]);
+  const tags = new Map();
+  for (const line of out.split('\n')) {
+    const m = line.match(/^([0-9a-f]+)\trefs\/tags\/(.+?)(\^\{\})?$/);
+    // an annotated tag comes twice: its own object, then the commit it points at ("^{}"), which wins
+    if (m && (m[3] || !tags.has(m[2]))) tags.set(m[2], m[1]);
+  }
+  return tags;
 }
 
 export async function getStashes(repo) {

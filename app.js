@@ -1,20 +1,20 @@
-import * as G from './git.js?v=0762a09';
-import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=0762a09';
-import { renderDiff, renderSubmodule, parseSubmoduleLog, loadSizes } from './diff.js?v=0762a09';
-import { loadMedia } from './media-diff.js?v=0762a09';
-import { partialPatch } from './patch.js?v=0762a09';
-import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=0762a09';
-import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=0762a09';
-import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=0762a09';
-import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=0762a09';
-import * as P from './projects.js?v=0762a09';
-import { syncStatus, onSyncStatus } from './mirror.js?v=0762a09';
-import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=0762a09';
-import * as S from './notes-store.js?v=0762a09';
-import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=0762a09';
-import * as M from './mobile.js?v=0762a09';
-import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=0762a09';
-import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, databaseKinds, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=0762a09';
+import * as G from './git.js?v=ddd8e97';
+import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=ddd8e97';
+import { renderDiff, renderSubmodule, parseSubmoduleLog, loadSizes } from './diff.js?v=ddd8e97';
+import { loadMedia } from './media-diff.js?v=ddd8e97';
+import { partialPatch } from './patch.js?v=ddd8e97';
+import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=ddd8e97';
+import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=ddd8e97';
+import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=ddd8e97';
+import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=ddd8e97';
+import * as P from './projects.js?v=ddd8e97';
+import { syncStatus, onSyncStatus } from './mirror.js?v=ddd8e97';
+import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=ddd8e97';
+import * as S from './notes-store.js?v=ddd8e97';
+import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=ddd8e97';
+import * as M from './mobile.js?v=ddd8e97';
+import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=ddd8e97';
+import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, databaseKinds, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=ddd8e97';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -415,6 +415,7 @@ const at = {
   remote: name => `#sidebar-body [data-remote="${CSS.escape(name)}"]`,
   allRemotes: () => '#sidebar-body [data-remote]',
   tag: name => `#sidebar-body [data-tag="${CSS.escape(name)}"]`,
+  remoteTag: name => `#sidebar-body [data-remote-tag="${CSS.escape(name)}"]`,
   submodule: path => `#sidebar-body [data-submodule="${CSS.escape(path)}"]`,
   allSubmodules: () => '#sidebar-body [data-submodule]',
   group: id => `#sidebar-body [data-group="${id}"]`,
@@ -476,7 +477,44 @@ function paintBusy() {
   $('#op-banner').classList.toggle('locked', !!last);
 }
 
-const g = args => G.git(state.repo, args);
+// After talking to the remotes (fetch, pull, push; not `fetch .`, which stays here), their tags
+// are checked again.
+const g = args => {
+  const repo = state.repo, p = G.git(repo, args);
+  if (['fetch', 'pull', 'push'].includes(args[0]) && args[1] !== '.') {
+    const again = () => checkRemoteTags(repo);
+    p.then(again, again);
+  }
+  return p;
+};
+
+// The tags each remote has (`remotes`: remote → Map of name → commit), per repository, for the
+// session: git keeps no copy of them, so they are asked over the network (getRemoteTags) when the
+// repository is first read and after each fetch, pull or push, in the background. A remote that
+// can't be reached (offline, or it would ask for credentials) keeps what it had.
+const remoteTags = new Map();
+
+async function checkRemoteTags(repo) {
+  const entry = remoteTags.get(repo) || { remotes: {} };
+  remoteTags.set(repo, entry);
+  const token = entry.checking = {};
+  const spin = repo === state.repo && addPending({ text: 'Checking remotes', on: [at.group('tags')], quiet: true, delay: 300 });
+  try {
+    const names = (await G.git(repo, ['remote'])).split('\n').map(s => s.trim()).filter(Boolean);
+    const results = await Promise.allSettled(names.map(rm => G.getRemoteTags(repo, rm)));
+    if (entry.checking !== token) return;
+    for (const rm of Object.keys(entry.remotes)) if (!names.includes(rm)) delete entry.remotes[rm];
+    names.forEach((rm, i) => { if (results[i].status === 'fulfilled') entry.remotes[rm] = results[i].value; });
+  } catch {
+    // not a repository anymore, or git is gone: the next refresh tells
+  } finally {
+    if (spin) removePending(spin);
+    if (entry.checking === token) {
+      entry.checking = null;
+      if (repo === state.repo && state.refs) renderSidebar();
+    }
+  }
+}
 
 // =====================================================================
 // Repository
@@ -1402,6 +1440,7 @@ async function doRefresh({ full = true } = {}) {
     if (repo !== state.repo) return;
     state.status = status; state.refs = refs; state.stashes = stashes; state.op = op; state.mergeTool = mergeTool;
     state.submodules = submodules; state.lfs = lfs;
+    if (!remoteTags.has(repo) && refs.remoteNames.length) checkRemoteTags(repo); // not awaited: it goes over the network
     syncMergeMessage();
     if (log) {
       const prevSha = state.selected != null ? state.log[state.selected]?.sha : null;
@@ -1645,6 +1684,44 @@ function branchList(branches, nameOf, scope, base, item) {
   });
 }
 
+// The tags of the sidebar: the local ones and the ones only some remote has (`local: false`),
+// each with `on`: remote → the commit it points at there (null when that remote doesn't have
+// it), for the remotes whose tags are known.
+function tagRows() {
+  const local = state.refs.tags, remotes = remoteTags.get(state.repo)?.remotes || {};
+  const names = new Set(local.map(t => t.name));
+  const rows = local.map(t => ({ ...t, local: true }));
+  for (const tags of Object.values(remotes)) {
+    for (const [name, sha] of tags) {
+      if (!names.has(name)) { names.add(name); rows.push({ name, sha, local: false }); }
+    }
+  }
+  for (const t of rows) t.on = Object.fromEntries(Object.entries(remotes).map(([rm, tags]) => [rm, tags.get(t.name) || null]));
+  // the last names first, like the local ones
+  return rows.sort((a, b) => (a.name < b.name ? 1 : a.name > b.name ? -1 : 0));
+}
+
+// A tag of the sidebar with where it is, like a branch's ↑↓, as seen on the main remote (or the
+// first one whose tags are known): there too (a cloud), only here (↑, to push), only on the
+// remotes (↓, to fetch), or there at another commit (≠).
+function tagItem(t, main) {
+  const where = (rm, sha) => !sha ? `Not on "${rm}"` : sha === t.sha ? `On "${rm}"` : `On "${rm}" at another commit (${sha.slice(0, 7)}, here ${t.sha.slice(0, 7)})`;
+  const lines = [t.name];
+  let track = '';
+  if (t.local) {
+    lines.push(...Object.entries(t.on).map(([rm, sha]) => where(rm, sha)));
+    const rm = main in t.on ? main : Object.keys(t.on)[0];
+    const sha = rm && t.on[rm];
+    if (rm) track = !sha ? '<span class="up">↑</span>' : sha === t.sha ? icon('cloud') : '<span class="warn">≠</span>';
+  } else {
+    const on = Object.keys(t.on).filter(rm => t.on[rm]);
+    lines.push(`Only on ${on.map(rm => `"${rm}"`).join(', ')}: not here yet`);
+    track = '<span class="dn">↓</span>';
+  }
+  const attr = t.local ? `data-tag="${esc(t.name)}"` : `data-remote-tag="${esc(t.name)}"`;
+  return `<div class="tree-item ${t.local ? '' : 'remote-only'}" ${attr} title="${esc(lines.join('\n'))}">${icon('tag')}<span class="label">${esc(t.name)}</span><span class="track">${track}</span></div>`;
+}
+
 function renderSidebar() {
   const s = state.status, r = state.refs;
   if (!s || !r) return;
@@ -1683,11 +1760,12 @@ function renderSidebar() {
   }).join('') || `<div class="empty-hint">${bf && r.remoteNames.length ? 'No matching remote branches' : 'No remotes'}</div>`;
   html += group('remotes', 'Remotes', bf ? remoteMatches : r.remoteNames.length, remoteHtml, !!bf);
 
-  const tags = r.tags.map(t => `<div class="tree-item" data-tag="${esc(t.name)}" title="${esc(t.name)}">${icon('tag')}<span class="label">${esc(t.name)}</span></div>`).join('')
-    || '<div class="empty-hint">No tags</div>';
-  const tagRemote = mainRemote();
-  html += group('tags', 'Tags', r.tags.length, tags, false,
-    tagRemote && r.tags.length ? [{ act: 'push-tags', icon: 'push', title: `Push all tags to "${tagRemote}"` }] : []);
+  const tagRemote = mainRemote(), tagList = tagRows();
+  const tags = tagList.map(t => tagItem(t, tagRemote)).join('') || '<div class="empty-hint">No tags</div>';
+  const tagActs = [];
+  if (tagList.some(t => !t.local)) tagActs.push({ act: 'fetch-tags', icon: 'fetch', title: 'Fetch the tags that are only on the remotes' });
+  if (tagRemote && r.tags.length) tagActs.push({ act: 'push-tags', icon: 'push', title: `Push all tags to "${tagRemote}"` });
+  html += group('tags', 'Tags', tagList.length, tags, false, tagActs);
 
   const stashes = state.stashes.map(st => `<div class="tree-item" data-stash="${esc(st.ref)}" title="${esc(st.subject)}">${icon('stash')}<span class="label">${esc(st.subject)}</span></div>`).join('')
     || '<div class="empty-hint">No stashes</div>';
@@ -1723,6 +1801,8 @@ $('#sidebar').addEventListener('click', e => {
   const tg = e.target.closest('[data-toggle]');
   if (tg) return toggleCollapsed(tg.dataset.toggle);
   if (e.target.closest('[data-lfs-pull]')) return groupAction('lfs-pull');
+  const rt = e.target.closest('[data-remote-tag]');
+  if (rt) return revealRemoteTag(rt.dataset.remoteTag);
   const item = e.target.closest('[data-branch],[data-remote-branch],[data-tag]');
   if (!item) return;
   const ref = item.dataset.branch ? `refs/heads/${item.dataset.branch}`
@@ -1746,6 +1826,7 @@ $('#sidebar').addEventListener('contextmenu', e => {
   const b = e.target.closest('[data-branch]');
   const rb = e.target.closest('[data-remote-branch]');
   const t = e.target.closest('[data-tag]');
+  const rt = e.target.closest('[data-remote-tag]');
   const st = e.target.closest('[data-stash]');
   const rm = e.target.closest('[data-remote]');
   const sm = e.target.closest('[data-submodule]');
@@ -1766,6 +1847,7 @@ $('#sidebar').addEventListener('contextmenu', e => {
   if (b) showMenu(e.clientX, e.clientY, branchMenuItems(b.dataset.branch));
   else if (rb) showMenu(e.clientX, e.clientY, remoteBranchMenuItems(rb.dataset.remoteBranch));
   else if (t) showMenu(e.clientX, e.clientY, tagMenuItems(t.dataset.tag));
+  else if (rt) showMenu(e.clientX, e.clientY, remoteTagMenuItems(rt.dataset.remoteTag));
   else if (st) {
     const ref = st.dataset.stash;
     showMenu(e.clientX, e.clientY, [
@@ -1831,10 +1913,39 @@ function tagMenuItems(name) {
   ];
 }
 
+// The remotes that have a tag, from their last check.
+const tagRemotes = name => Object.entries(remoteTags.get(state.repo)?.remotes || {}).filter(([, tags]) => tags.has(name)).map(([rm]) => rm);
+
+// A tag only on the remotes: fetched from one of them, or deleted there.
+function remoteTagMenuItems(name) {
+  const on = tagRemotes(name);
+  return [
+    ...on.map(rm => ({ label: `Fetch tag from "${rm}"`, run: () => run('Fetch tag', () => fetchTags(rm, [name]), { success: `Tag "${name}" fetched from "${rm}"`, busy: 'Fetching', on: [at.remoteTag(name)] }) })),
+    { label: 'Copy name', run: () => copy(name) },
+    '-',
+    ...on.map(rm => ({ label: `Delete tag from "${rm}"…`, danger: true, run: () => deleteRemoteTag(name, rm) })),
+  ];
+}
+
+// Its commit in the history, when it is here (the tag is not, so it may not be).
+function revealRemoteTag(name) {
+  const rm = tagRemotes(name)[0], sha = rm && remoteTags.get(state.repo).remotes[rm].get(name);
+  const idx = sha ? state.log.findIndex(c => c.sha === sha) : -1;
+  if (idx < 0) return toast('Its commit is not here: fetch the tag to see it');
+  setView('history');
+  selectCommit(idx, { scroll: true });
+}
+
 function tagsMenuItems() {
   const remotes = state.refs.remoteNames;
   if (!remotes.length) return [{ label: 'Push all tags (no remote configured)', disabled: true }];
-  return remotes.map(rm => ({ label: `Push all tags to "${rm}"`, disabled: !state.refs.tags.length, run: () => pushTags(rm) }));
+  const missing = tagRows().filter(t => !t.local).length;
+  return [
+    ...remotes.map(rm => ({ label: `Push all tags to "${rm}"`, disabled: !state.refs.tags.length, run: () => pushTags(rm) })),
+    { label: missing ? `Fetch the ${plural(missing, 'tag')} only on the remotes` : 'Fetch the tags only on the remotes', disabled: !missing, run: fetchMissingTags },
+    '-',
+    { label: "Check the remotes' tags again", run: () => checkRemoteTags(state.repo) },
+  ];
 }
 
 function toggleCollapsed(id) {
@@ -3006,6 +3117,22 @@ async function createTag(sha) {
   if (created && push) pushTags(remote, name);
 }
 
+// Fetches these tags from a remote, and nothing else: not its branches, nor a tag that is here at
+// another commit (git refuses to replace it).
+const fetchTags = (remote, names) => g(['fetch', '--no-tags', remote, ...names.map(n => `refs/tags/${n}:refs/tags/${n}`)]);
+
+// The tags only on the remotes, each from the main remote when it has it.
+function fetchMissingTags() {
+  const main = mainRemote(), byRemote = new Map();
+  const missing = tagRows().filter(t => !t.local);
+  for (const t of missing) {
+    const rm = t.on[main] ? main : Object.keys(t.on).find(r => t.on[r]);
+    byRemote.set(rm, [...(byRemote.get(rm) || []), t.name]);
+  }
+  return run('Fetch tags', async () => { for (const [rm, names] of byRemote) await fetchTags(rm, names); },
+    { success: `${plural(missing.length, 'tag')} fetched`, busy: 'Fetching', on: [at.group('tags')] });
+}
+
 // Pushes one tag, or all of them without `name`.
 function pushTags(remote, name) {
   return run(name ? 'Push tag' : 'Push tags', () => g(['push', remote, name ? `refs/tags/${name}` : '--tags']), {
@@ -3031,8 +3158,9 @@ async function deleteTag(name) {
 }
 
 async function deleteRemoteTag(name, remote) {
-  if (!(await confirmBox('Delete remote tag', `Delete the tag "${name}" on "${remote}"? This affects everyone using the remote. The local tag is kept.`))) return;
-  run('Delete remote tag', () => g(['push', remote, '--delete', `refs/tags/${name}`]), { success: `Tag "${name}" deleted from "${remote}"`, busy: 'Deleting', on: [at.tag(name)] });
+  const here = state.refs.tags.some(t => t.name === name);
+  if (!(await confirmBox('Delete remote tag', `Delete the tag "${name}" on "${remote}"? This affects everyone using the remote.${here ? ' The local tag is kept.' : ''}`))) return;
+  run('Delete remote tag', () => g(['push', remote, '--delete', `refs/tags/${name}`]), { success: `Tag "${name}" deleted from "${remote}"`, busy: 'Deleting', on: [here ? at.tag(name) : at.remoteTag(name)] });
 }
 
 async function renameBranch(name) {
@@ -3234,6 +3362,7 @@ function groupAction(act) {
     'lfs-pull': () => lfsCommand('pull'),
     'lfs-track': () => trackLfs(),
     'push-tags': () => pushTags(mainRemote()),
+    'fetch-tags': fetchMissingTags,
     'branch-tree': () => { state.branchTree = !state.branchTree; store('branchTree', state.branchTree); renderSidebar(); },
   })[act]?.();
 }

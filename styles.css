@@ -410,6 +410,10 @@ body.no-repo #repo-actions, body.no-repo [data-action="refresh"] { visibility: h
 .tree-item .track .dn { color: var(--yellow); }
 .tree-item .track .warn { color: var(--yellow); }
 .tree-item .track .bad { color: var(--red); }
+.tree-item .track { align-items: center; }
+.tree-item .track .ic { width: 13px; height: 13px; }
+/* a tag only on the remotes */
+.tree-item.remote-only .label { color: var(--text-3); }
 .tree-item.lfs-missing, .tree-item.lfs-missing .ic { color: var(--yellow); }
 .empty-hint.warn { color: var(--yellow); white-space: normal; }
 .remote-head { padding-left: 22px; color: var(--text-2); }
