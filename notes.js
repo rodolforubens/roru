@@ -5,17 +5,17 @@
 // below as it was. Pages nest in other pages through their text (a link to the nested page, or a
 // database block); databases show in the tree as one item. Tabs and spaces belong to app.js (see
 // initNotesUi); the table, board and canvas views and the properties are in views.js (and canvas.js).
-import * as S from './notes-store.js?v=937799c';
-import * as G from './git.js?v=937799c';
-import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=937799c';
-import { openImageViewer, copyImage } from './image-viewer.js?v=937799c';
-import { pickEmoji } from './emoji.js?v=937799c';
-import { toMarkdown } from './markdown.js?v=937799c';
-import { sharedPath } from './projects.js?v=937799c';
-import { initViews, renderCollection, renderProps, repaintViews, repaintItem, valueText, createBranchFor, addView, focusedDb, VIEW_KINDS, viewName } from './views.js?v=937799c';
-import { importNotion } from './notion-import.js?v=937799c';
-import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative, fmtSize } from './util.js?v=937799c';
-import { desktop, invoke, isMobile } from './platform.js?v=937799c';
+import * as S from './notes-store.js?v=e558b30';
+import * as G from './git.js?v=e558b30';
+import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=e558b30';
+import { openImageViewer, copyImage } from './image-viewer.js?v=e558b30';
+import { pickEmoji } from './emoji.js?v=e558b30';
+import { toMarkdown } from './markdown.js?v=e558b30';
+import { sharedPath } from './projects.js?v=e558b30';
+import { initViews, renderCollection, renderProps, repaintViews, repaintItem, valueText, createBranchFor, addView, focusedDb, VIEW_KINDS, viewName } from './views.js?v=e558b30';
+import { importNotion } from './notion-import.js?v=e558b30';
+import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative, fmtSize } from './util.js?v=e558b30';
+import { desktop, invoke, isMobile } from './platform.js?v=e558b30';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -1008,16 +1008,17 @@ function cardHtml(n) {
   </div>`;
 }
 
-// The first picture of the note's text (or of a YouTube video shown as a card in it), and its start
+// The first picture of the note's text (or of a YouTube video shown as a card in it), how many pictures it has (`images`), and its start
 // as plain text. `lead`: that picture is what the text starts with (nothing but empty lines before it).
 async function previewOf(id) {
   const n = S.getNote(id);
   const stamp = S.textStamp(id); // (before reading: a change made meanwhile reads it again)
   if (!n || n.kind === 'database') return { updated: stamp };
   const doc = await S.loadContent(id);
-  let cover = null;
+  let cover = null, images = 0;
   const parts = [];
   const walk = x => {
+    if (x.type === 'image' && x.attrs?.src) images++;
     if (x.type === 'image' && !cover && x.attrs?.src) cover = x.attrs.src;
     if (x.type === 'embed' && !cover) cover = embedOf(x.attrs?.url)?.thumb || null; // a YouTube video's picture
     if (x.type === 'text') parts.push(x.text);
@@ -1030,7 +1031,7 @@ async function previewOf(id) {
   const start = first?.type === 'paragraph' ? first.content.find(x => x.type !== 'text' || x.text.trim()) : first;
   const lead = !!cover && (start?.type === 'image' || start?.type === 'embed');
   const text = parts.join('').replace(/\s+/g, ' ').trim();
-  const p = { updated: stamp, cover, lead, text: text.length > 220 ? `${text.slice(0, 219).trimEnd()}…` : text };
+  const p = { updated: stamp, cover, images, lead, text: text.length > 220 ? `${text.slice(0, 219).trimEnd()}…` : text };
   previews.set(id, p);
   return p;
 }

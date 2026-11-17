@@ -4,10 +4,10 @@
 // the phone's back button, through the browser history) and has the screen's menu, and the bar at
 // the bottom goes home, searches and makes a new page. Home lists the recent notes, the projects
 // and Home's notes.
-import * as S from './notes-store.js?v=937799c';
-import * as P from './projects.js?v=937799c';
-import { isMobile, onMobileChange } from './platform.js?v=937799c';
-import { esc, icon, store } from './util.js?v=937799c';
+import * as S from './notes-store.js?v=e558b30';
+import * as P from './projects.js?v=e558b30';
+import { isMobile, onMobileChange } from './platform.js?v=e558b30';
+import { esc, icon, store } from './util.js?v=e558b30';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 

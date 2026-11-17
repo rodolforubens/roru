@@ -1581,6 +1581,7 @@ body:has(.cv-focus) #peek.side:not([hidden]) { position: fixed; }
 .gl-small .gl-ct { font-size: 12px; }
 .gl-ct.untitled { color: var(--text-3); }
 .gl-ct { cursor: text; }
+.gl-more { position: absolute; right: 5px; bottom: 5px; padding: 0 5px; border-radius: 8px; background: rgba(0, 0, 0, 0.55); color: #fff; font-size: 10px; font-weight: 600; line-height: 16px; pointer-events: none; }
 .gl-ct:hover { text-decoration: underline; text-decoration-color: var(--text-3); text-underline-offset: 3px; }
 .gl-tile:hover .gl-pic { box-shadow: 0 0 0 1px var(--text-3); }
 .gl-tile:hover .bd-edit { visibility: visible; }

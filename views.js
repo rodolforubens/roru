@@ -4,13 +4,13 @@
 // anywhere, see canvas.js). Also the properties
 // block of an item's page, which shares the value editors with the table.
 // A Branch property links a note to a branch of one of the space's repositories (notes as tasks).
-import * as S from './notes-store.js?v=937799c';
-import * as G from './git.js?v=937799c';
-import { esc, icon, folderName, store } from './util.js?v=937799c';
-import { desktop } from './platform.js?v=937799c';
-import { localPath, sharedPath } from './projects.js?v=937799c';
-import { pickEmoji } from './emoji.js?v=937799c';
-import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=937799c';
+import * as S from './notes-store.js?v=e558b30';
+import * as G from './git.js?v=e558b30';
+import { esc, icon, folderName, store } from './util.js?v=e558b30';
+import { desktop } from './platform.js?v=e558b30';
+import { localPath, sharedPath } from './projects.js?v=e558b30';
+import { pickEmoji } from './emoji.js?v=e558b30';
+import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=e558b30';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -976,6 +976,8 @@ function fillGallery(c, notes) {
       if (url?.then) url.then(u => { if (u) img.src = u; else img.remove(); });
       else img.src = url;
       pic.append(img);
+      // (the item has more pictures in its text: how many, small in a corner)
+      if (p.images > 1) pic.insertAdjacentHTML('beforeend', `<span class="gl-more" title="${p.images} images in the page">+${p.images - 1}</span>`);
     };
     const hit = snippets.get(n.id);
     if (hit?.updated === S.textStamp(n.id)) put(hit);
