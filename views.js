@@ -4,13 +4,13 @@
 // anywhere, see canvas.js). Also the properties
 // block of an item's page, which shares the value editors with the table.
 // A Branch property links a note to a branch of one of the space's repositories (notes as tasks).
-import * as S from './notes-store.js?v=e558b30';
-import * as G from './git.js?v=e558b30';
-import { esc, icon, folderName, store } from './util.js?v=e558b30';
-import { desktop } from './platform.js?v=e558b30';
-import { localPath, sharedPath } from './projects.js?v=e558b30';
-import { pickEmoji } from './emoji.js?v=e558b30';
-import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=e558b30';
+import * as S from './notes-store.js?v=db85e2e';
+import * as G from './git.js?v=db85e2e';
+import { esc, icon, folderName, store } from './util.js?v=db85e2e';
+import { desktop } from './platform.js?v=db85e2e';
+import { localPath, sharedPath } from './projects.js?v=db85e2e';
+import { pickEmoji } from './emoji.js?v=db85e2e';
+import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=db85e2e';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -442,12 +442,12 @@ export async function createBranchFor(id, { propId = null, x = innerWidth / 2 - 
     await G.git(repo, ['check-ref-format', '--branch', name]).catch(() => { throw new Error(`"${name}" is not a valid branch name`); });
     await G.git(repo, r.checked ? ['switch', '-c', name] : ['branch', name]);
   } catch (e) {
-    return host.toast('Could not create the branch', 'error', String(e.message || e));
+    return host.toast(`${folderName(repo)}: Could not create the branch`, 'error', String(e.message || e));
   }
   const key = S.collectionOf(id);
   const pid = propId || S.getCollection(key).schema.find(p => p.type === 'branch')?.id || S.addProperty(key, { name: 'Branch', type: 'branch' }).id;
   S.setProp(id, pid, { repo: sharedPath(repo), name });
-  host.toast(`Branch "${name}" created${r.checked ? ' and checked out' : ''}`, 'ok');
+  host.toast(`${folderName(repo)}: Branch "${name}" created${r.checked ? ' and checked out' : ''}`, 'ok');
   refsOf(repo, { fresh: true });
   host.gitChanged(repo);
 }

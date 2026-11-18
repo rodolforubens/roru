@@ -8,9 +8,9 @@
 // computer (and in the mentions and Branch values of the notes); each computer can point it to a
 // folder of its own (see "Where the folders are on this computer" below), and the rest of the UI
 // (tabs, the dashboard, Git) only sees those local paths.
-import { store } from './util.js?v=e558b30';
-import { db } from './account.js?v=e558b30';
-import { createMirror, clone } from './mirror.js?v=e558b30';
+import { store } from './util.js?v=db85e2e';
+import { db } from './account.js?v=db85e2e';
+import { createMirror, clone } from './mirror.js?v=db85e2e';
 
 export const COLORS = ['#7aa2f7', '#9ece6a', '#f7768e', '#e0af68', '#bb9af7', '#2ac3de', '#ff9e64', '#73daca'];
 

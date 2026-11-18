@@ -2,10 +2,10 @@
 // its upstream, local changes, last commit), and fetch/pull for all of them at once.
 // Pulls here are fast-forward only, so they never create merge commits or stop on conflicts:
 // a branch that diverged from its upstream is reported, to be merged or rebased in its tab.
-import * as G from './git.js?v=e558b30';
-import * as P from './projects.js?v=e558b30';
-import { esc, fmtRelative, icon, folderName, normPath, plural } from './util.js?v=e558b30';
-import { desktop, invoke } from './platform.js?v=e558b30';
+import * as G from './git.js?v=db85e2e';
+import * as P from './projects.js?v=db85e2e';
+import { esc, fmtRelative, icon, folderName, normPath, plural } from './util.js?v=db85e2e';
+import { desktop, invoke } from './platform.js?v=db85e2e';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -669,16 +669,16 @@ async function pullAll(id) {
 async function fetchOne(id, path) {
   if (busy.has(path)) return;
   const { failed } = await runOn(id, [path], 'Fetching', fetchRepo);
-  if (failed.length) host.toast(`Fetch failed — ${folderName(path)}`, 'error', failed[0][1]);
+  if (failed.length) host.toast(`${folderName(path)}: Fetch failed`, 'error', failed[0][1]);
 }
 
 async function pullOne(id, path) {
   const why = info.get(path)?.kind === 'git' && pullBlocker(info.get(path));
-  if (why) return host.toast(`Can't pull ${folderName(path)} — ${why}`, 'warn');
+  if (why) return host.toast(`${folderName(path)}: Can't pull — ${why}`, 'warn');
   if (busy.has(path)) return;
   const { ok, failed } = await runOn(id, [path], 'Pulling', pull);
-  if (failed.length) host.toast(`Pull failed — ${folderName(path)}`, 'error', failed[0][1]);
-  else host.toast(ok[0][1] ? `Pulled ${folderName(path)}` : `${folderName(path)} is already up to date`, 'ok');
+  if (failed.length) host.toast(`${folderName(path)}: Pull failed`, 'error', failed[0][1]);
+  else host.toast(`${folderName(path)}: ${ok[0][1] ? 'Pull complete' : 'Already up to date'}`, 'ok');
 }
 
 // =====================================================================

@@ -1,20 +1,20 @@
-import * as G from './git.js?v=e558b30';
-import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=e558b30';
-import { renderDiff, renderSubmodule, parseSubmoduleLog, loadSizes } from './diff.js?v=e558b30';
-import { loadMedia } from './media-diff.js?v=e558b30';
-import { partialPatch } from './patch.js?v=e558b30';
-import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=e558b30';
-import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=e558b30';
-import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=e558b30';
-import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=e558b30';
-import * as P from './projects.js?v=e558b30';
-import { syncStatus, onSyncStatus } from './mirror.js?v=e558b30';
-import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=e558b30';
-import * as S from './notes-store.js?v=e558b30';
-import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=e558b30';
-import * as M from './mobile.js?v=e558b30';
-import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=e558b30';
-import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, databaseKinds, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=e558b30';
+import * as G from './git.js?v=db85e2e';
+import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=db85e2e';
+import { renderDiff, renderSubmodule, parseSubmoduleLog, loadSizes } from './diff.js?v=db85e2e';
+import { loadMedia } from './media-diff.js?v=db85e2e';
+import { partialPatch } from './patch.js?v=db85e2e';
+import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=db85e2e';
+import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=db85e2e';
+import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=db85e2e';
+import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=db85e2e';
+import * as P from './projects.js?v=db85e2e';
+import { syncStatus, onSyncStatus } from './mirror.js?v=db85e2e';
+import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=db85e2e';
+import * as S from './notes-store.js?v=db85e2e';
+import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=db85e2e';
+import * as M from './mobile.js?v=db85e2e';
+import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=db85e2e';
+import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, databaseKinds, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=db85e2e';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -62,6 +62,10 @@ function toast(msg, type = 'info', detail = '', action = null) {
   $('#toasts').append(el);
   setTimeout(() => el.remove(), type === 'error' ? 12000 : type === 'warn' || action ? 8000 : 3500);
 }
+
+// What a git action reports starts with the repository it ran in, named like its tab
+// ("WorldToolkit: Push complete"): another tab may be in front by the time it ends.
+const repoToast = (repo, msg, ...rest) => toast(repo ? `${tabLabel(repo)}: ${msg}` : msg, ...rest);
 
 // An item's `run` gets where the item was on the screen (to open more choices there). An item with
 // `items` (a list, or a function that makes it) opens them in a submenu next to it, on the right or
@@ -337,7 +341,7 @@ async function applyPart(pane, pick) {
   try {
     patch = partialPatch(d.text, pick, reverse);
   } catch (e) {
-    return toast(`${reverse ? 'Unstage' : 'Stage'} failed`, 'error', String(e.message || e));
+    return repoToast(state.repo, `${reverse ? 'Unstage' : 'Stage'} failed`, 'error', String(e.message || e));
   }
   if (!patch) return;
   applyingPart = true;
@@ -385,24 +389,25 @@ function lineMenu(e, row) {
 // not reported as a failure: it points the user to the conflicts instead.
 async function run(label, fn, { reload = true, success, busy, on = [], mayConflict = false } = {}) {
   const id = addPending({ text: busy || label, on });
+  const repo = state.repo;
   const hadConflicts = !!state.status?.conflicts.length;
   let error = null;
   try {
     const r = await fn();
-    if (success) toast(success, 'ok');
+    if (success) repoToast(repo, success, 'ok');
     return r;
   } catch (e) {
     error = e;
-    if (!mayConflict || !reload) toast(`${label} failed`, 'error', String(e.message || e));
+    if (!mayConflict || !reload) repoToast(repo, `${label} failed`, 'error', String(e.message || e));
   } finally {
     if (reload) await refresh();
     removePending(id);
     if (error && mayConflict && reload) {
       if (!hadConflicts && state.status?.conflicts.length) {
-        toast(`${label} stopped because of conflicts — resolve them to continue`, 'warn');
+        repoToast(repo, `${label} stopped because of conflicts — resolve them to continue`, 'warn');
         if (state.view !== 'changes') setView('changes');
       } else {
-        toast(`${label} failed`, 'error', String(error.message || error));
+        repoToast(repo, `${label} failed`, 'error', String(error.message || error));
       }
     }
   }
@@ -626,7 +631,7 @@ async function initRepo() {
   try {
     await G.git(path, ['init']);
   } catch (e) {
-    return toast('git init failed', 'error', e.message);
+    return repoToast(path, 'git init failed', 'error', e.message);
   }
   if (state.repo !== path) return;
   tabs.plain.delete(path);
@@ -635,7 +640,7 @@ async function initRepo() {
   applyMode();
   await refresh();
   setMode('git');
-  toast('Git repository created', 'ok');
+  repoToast(path, 'Git repository created', 'ok');
 }
 
 // Opens a repository from the recent list, dropping it from the list if it is gone.
@@ -1592,8 +1597,9 @@ async function skipOp() {
   if (op?.kind !== 'rebase') return;
   const what = op.sha ? `commit ${op.sha.slice(0, 7)} "${op.subject}"` : 'the current commit';
   if (!(await confirmBox('Skip commit', `Skip ${what}? Its changes are left out of the rebased branch.`, 'Skip commit'))) return;
+  const repo = state.repo;
   const ok = await run('Skip commit', async () => { await g(['rebase', '--skip']); return true; }, { busy: 'Skipping', on: [at.op()], mayConflict: true });
-  if (ok && !state.op) toast('Rebase complete', 'ok');
+  if (ok && !state.op) repoToast(repo, 'Rebase complete', 'ok');
 }
 
 // Merges are concluded with a commit from the commit box; the other operations keep the
@@ -1603,9 +1609,10 @@ async function continueOp() {
   if (!op) return;
   if (op.kind === 'merge') return commit();
   if (state.status.conflicts.length) return toast('Resolve every conflict first', 'error');
+  const repo = state.repo;
   const ok = await run(`Continue ${op.kind}`, async () => { await g([op.kind, '--continue']); return true; },
     { busy: 'Continuing', on: [at.op(), at.current()], mayConflict: true });
-  if (ok && !state.op) toast(`${cap(op.kind)} complete`, 'ok');
+  if (ok && !state.op) repoToast(repo, `${cap(op.kind)} complete`, 'ok');
 }
 
 const cap = s => s[0].toUpperCase() + s.slice(1);
@@ -3080,6 +3087,7 @@ async function commit() {
   }
   if (!amend && !merging && !state.status.staged.length) return toast('Nothing staged for commit');
   committing = true;
+  const repo = state.repo;
   const btn = $('#commit-btn');
   if (btn) {
     btn.disabled = true;
@@ -3095,7 +3103,7 @@ async function commit() {
     state.amend = false;
     const box = $('#amend');
     if (box) box.checked = false;
-    toast(amend ? 'Commit amended' : merging ? 'Merge committed' : 'Commit created', 'ok');
+    repoToast(repo, amend ? 'Commit amended' : merging ? 'Merge committed' : 'Commit created', 'ok');
     // An amended commit may already be on the remote, where it would need a force push: never automatic.
     if (!amend && autoPushOn()) autoPush();
   }
@@ -3108,9 +3116,9 @@ const autoPushOn = () => !!store('autoPush')?.[state.repo];
 // Pushes without the push dialog: no tags, never forced, publishing the branch when it has no upstream.
 function autoPush() {
   const s = state.status;
-  if (s.detached) return toast('Detached HEAD — the commit was not pushed', 'warn');
+  if (s.detached) return repoToast(state.repo, 'Detached HEAD — the commit was not pushed', 'warn');
   const remote = mainRemote();
-  if (!s.upstream && !remote) return toast('No remote configured — the commit was not pushed', 'warn');
+  if (!s.upstream && !remote) return repoToast(state.repo, 'No remote configured — the commit was not pushed', 'warn');
   return run('Push', () => g(s.upstream ? ['push'] : ['push', '-u', remote, 'HEAD']), {
     success: s.upstream ? 'Push complete' : 'Branch published',
     busy: s.upstream ? 'Pushing' : 'Publishing',

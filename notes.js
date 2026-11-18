@@ -5,17 +5,17 @@
 // below as it was. Pages nest in other pages through their text (a link to the nested page, or a
 // database block); databases show in the tree as one item. Tabs and spaces belong to app.js (see
 // initNotesUi); the table, board and canvas views and the properties are in views.js (and canvas.js).
-import * as S from './notes-store.js?v=e558b30';
-import * as G from './git.js?v=e558b30';
-import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=e558b30';
-import { openImageViewer, copyImage } from './image-viewer.js?v=e558b30';
-import { pickEmoji } from './emoji.js?v=e558b30';
-import { toMarkdown } from './markdown.js?v=e558b30';
-import { sharedPath } from './projects.js?v=e558b30';
-import { initViews, renderCollection, renderProps, repaintViews, repaintItem, valueText, createBranchFor, addView, focusedDb, VIEW_KINDS, viewName } from './views.js?v=e558b30';
-import { importNotion } from './notion-import.js?v=e558b30';
-import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative, fmtSize } from './util.js?v=e558b30';
-import { desktop, invoke, isMobile } from './platform.js?v=e558b30';
+import * as S from './notes-store.js?v=db85e2e';
+import * as G from './git.js?v=db85e2e';
+import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=db85e2e';
+import { openImageViewer, copyImage } from './image-viewer.js?v=db85e2e';
+import { pickEmoji } from './emoji.js?v=db85e2e';
+import { toMarkdown } from './markdown.js?v=db85e2e';
+import { sharedPath } from './projects.js?v=db85e2e';
+import { initViews, renderCollection, renderProps, repaintViews, repaintItem, valueText, createBranchFor, addView, focusedDb, VIEW_KINDS, viewName } from './views.js?v=db85e2e';
+import { importNotion } from './notion-import.js?v=db85e2e';
+import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative, fmtSize } from './util.js?v=db85e2e';
+import { desktop, invoke, isMobile } from './platform.js?v=db85e2e';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
