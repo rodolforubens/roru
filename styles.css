@@ -1888,7 +1888,11 @@ html.mobile .gl-large { --gs: 240px; --gh: 200px; }
 /* the dashboard home: a note of the project as a section of its own, its title in the section's
    head and its text (or one view of a database) under it (see renderHomeNote in notes.js) */
 .dash-block:has(> .dash-home:empty) { display: none; }
-.dash-home { margin: 0 24px 28px; }
+/* (a container like the kanban's cards, its head inside) */
+.dash-home {
+  margin: 0 24px 28px; padding: 10px 16px 14px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 1px 2px rgba(0, 0, 0, .12);
+}
 .hm-head { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
 .hm-title {
   display: inline-flex; align-items: center; gap: 6px; min-width: 0; margin: 0 0 0 -5px; padding: 1px 5px;
@@ -1907,7 +1911,7 @@ html.mobile .gl-large { --gs: 240px; --gh: 200px; }
    canvas takes that height. Not in focus mode, which takes the window. */
 .dash-home[data-height="small"] { --hm-max: max(160px, calc(var(--avail, 70vh) / 3)); }
 .dash-home[data-height="medium"] { --hm-max: max(160px, calc(var(--avail, 70vh) * 2 / 3)); }
-.dash-home[data-height="full"] { --hm-max: max(160px, calc(var(--avail, 70vh) - 56px)); }
+.dash-home[data-height="full"] { --hm-max: max(160px, calc(var(--avail, 70vh) - 80px)); }
 .dash-home[data-height]:not(:has(.cv-focus)) .hm-body { display: flex; flex-direction: column; max-height: var(--hm-max); }
 .dash-home[data-height]:not(:has(.cv-focus)) .np-home { flex: 0 1 auto; min-height: 0; }
 .dash-home[data-height]:not(:has(.cv-focus)) .np-home .np-scroll { flex: 0 1 auto; overflow: auto; }
@@ -2063,6 +2067,7 @@ html.mobile .dash-head { padding: 16px 16px 12px; }
 html.mobile .dash-links { margin: 0 16px 24px; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 html.mobile .lk-card .lk-body { padding: 8px 10px 9px; }
 html.mobile .dash-notes, html.mobile .dash-home { margin: 0 16px 24px; }
+html.mobile .dash-home { padding: 8px 12px 12px; }
 html.mobile .np-home .np-doc { padding: 0; }
 html.mobile .bd { scroll-snap-type: x mandatory; }
 html.mobile .bd-col { width: calc(100vw - 72px); scroll-snap-align: start; }
