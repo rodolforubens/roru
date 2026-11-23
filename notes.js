@@ -5,17 +5,17 @@
 // below as it was. Pages nest in other pages through their text (a link to the nested page, or a
 // database block); databases show in the tree as one item. Tabs and spaces belong to app.js (see
 // initNotesUi); the table, board and canvas views and the properties are in views.js (and canvas.js).
-import * as S from './notes-store.js?v=36c98f4';
-import * as G from './git.js?v=36c98f4';
-import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=36c98f4';
-import { openImageViewer, copyImage } from './image-viewer.js?v=36c98f4';
-import { pickEmoji } from './emoji.js?v=36c98f4';
-import { toMarkdown } from './markdown.js?v=36c98f4';
-import { sharedPath, getProject, homeOf, setHome } from './projects.js?v=36c98f4';
-import { initViews, renderCollection, renderProps, repaintViews, repaintItem, valueText, createBranchFor, addView, focusedDb, VIEW_KINDS, viewName } from './views.js?v=36c98f4';
-import { importNotion } from './notion-import.js?v=36c98f4';
-import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative, fmtSize } from './util.js?v=36c98f4';
-import { desktop, invoke, isMobile } from './platform.js?v=36c98f4';
+import * as S from './notes-store.js?v=1babd93';
+import * as G from './git.js?v=1babd93';
+import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=1babd93';
+import { openImageViewer, copyImage } from './image-viewer.js?v=1babd93';
+import { pickEmoji } from './emoji.js?v=1babd93';
+import { toMarkdown } from './markdown.js?v=1babd93';
+import { sharedPath, getProject, homeOf, setHome, homeHeightOf, setHomeHeight } from './projects.js?v=1babd93';
+import { initViews, renderCollection, renderProps, repaintViews, repaintItem, valueText, createBranchFor, addView, focusedDb, VIEW_KINDS, viewName } from './views.js?v=1babd93';
+import { importNotion } from './notion-import.js?v=1babd93';
+import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative, fmtSize } from './util.js?v=1babd93';
+import { desktop, invoke, isMobile } from './platform.js?v=1babd93';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -73,7 +73,7 @@ export async function initNotesUi(h) {
     for (const t of trees) if (t.el.isConnected) paintTree(t); else trees.delete(t);
     for (const p of cardPanels) if (p.el.isConnected) paintCards(p); else cardPanels.delete(p);
     for (const p of pages) if (p.el.isConnected) paintMeta(p); else destroyPage(p);
-    for (const h of homes) if (h.el.isConnected) paintHome(h); else homes.delete(h);
+    paintHomes();
     repaintViews();
     // mentions of renamed notes show their new title (and the deleted ones, that they are)
     for (const id of [...ids, ...(removed || [])]) {
@@ -973,8 +973,11 @@ export function renderNotesPanel(el, space) {
 // A project's dashboard can show one of its notes as a section of its own ("Use as dashboard home" in
 // the note's menu, kept in the project: see homeOf in projects.js): a page's text, edited right
 // there, or one view of a database (the one chosen, else the view it shows). Hidden while the note
-// is in the trash, gone, or moved to another space.
-const homes = new Set(); // { el, space, key (what is shown), page }
+// is in the trash, gone, or moved to another space. Its menu sets how tall it gets (`data-height`):
+// as tall as the note, or at most a third, two thirds or all of the dashboard's visible height
+// (`--avail`, measured here), what doesn't fit scrolling inside it.
+const homes = new Set(); // { el, space, key (what is shown), page, ro (measures the dashboard) }
+const HOME_HEIGHTS = { small: 'Small (a third of the dashboard)', medium: 'Medium (two thirds)', full: 'Full (the whole dashboard)' };
 
 // The note the dashboard of `space` shows: { id, view } (a database's view that is still there).
 function homeNoteOf(space) {
@@ -985,34 +988,63 @@ function homeNoteOf(space) {
   return { id: n.id, view: v?.id ?? null };
 }
 
+// The home's menu: its height, then the note's own menu.
+function homeMenu(h) {
+  const now = homeHeightOf(getProject(h.space)), check = on => (on ? '  ✓' : '');
+  const height = m => () => { setHomeHeight(h.space, m); paintHomes(); };
+  return [
+    { label: 'Max height', items: () => [
+      { label: `None (as tall as the note)${check(!now)}`, run: height(null) },
+      '-',
+      ...Object.entries(HOME_HEIGHTS).map(([m, name]) => ({ label: name + check(now === m), run: height(m) })),
+    ] },
+    '-',
+    ...noteMenuItems(h.page.id, 'home'),
+  ];
+}
+
 export function renderHomeNote(el, space) {
   let h = [...homes].find(x => x.el === el);
   if (!h) {
-    h = { el, space, key: '', page: null };
+    h = { el, space, key: '', page: null, ro: null };
     homes.add(h);
     el.addEventListener('click', e => {
       const b = e.target.closest('[data-hm]'), id = h.page?.id;
       if (!b || !id) return;
       if (b.dataset.hm === 'open') return openNote(id, e.ctrlKey || e.metaKey ? 'tab' : undefined);
       const r = b.getBoundingClientRect();
-      host.showMenu(r.right - 220, r.bottom + 4, noteMenuItems(id, 'home'));
+      host.showMenu(r.right - 220, r.bottom + 4, homeMenu(h));
     });
     el.addEventListener('contextmenu', e => {
       if (!e.target.closest('.hm-head') || !h.page) return;
       e.preventDefault();
-      host.showMenu(e.clientX, e.clientY, noteMenuItems(h.page.id, 'home'));
+      host.showMenu(e.clientX, e.clientY, homeMenu(h));
     });
+    // the height of what shows the dashboard, which the sizes are parts of
+    const scroller = el.closest('.dash');
+    if (scroller) {
+      h.ro = new ResizeObserver(() => el.style.setProperty('--avail', `${scroller.clientHeight}px`));
+      h.ro.observe(scroller);
+    }
   }
   h.space = space;
   paintHome(h);
 }
 
-const paintHomes = () => { for (const h of homes) if (h.el.isConnected) paintHome(h); else homes.delete(h); };
+const paintHomes = () => {
+  for (const h of homes) {
+    if (h.el.isConnected) paintHome(h);
+    else { h.ro?.disconnect(); homes.delete(h); }
+  }
+};
 
 // The note is mounted again only when another one (or another view) is shown, so what is being typed
-// in it stays; otherwise only its head is drawn again.
+// in it stays; otherwise only its head and its height are drawn again.
 function paintHome(h) {
   const home = homeNoteOf(h.space), key = home ? `${home.id}:${home.view || ''}` : '';
+  const height = homeHeightOf(getProject(h.space));
+  if (height) h.el.dataset.height = height;
+  else delete h.el.dataset.height;
   if (key !== h.key || !h.page?.alive || !h.el.contains(h.page.el)) {
     if (h.page) destroyPage(h.page);
     h.page = null;

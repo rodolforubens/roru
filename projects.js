@@ -8,9 +8,9 @@
 // computer (and in the mentions and Branch values of the notes); each computer can point it to a
 // folder of its own (see "Where the folders are on this computer" below), and the rest of the UI
 // (tabs, the dashboard, Git) only sees those local paths.
-import { store } from './util.js?v=36c98f4';
-import { db } from './account.js?v=36c98f4';
-import { createMirror, clone } from './mirror.js?v=36c98f4';
+import { store } from './util.js?v=1babd93';
+import { db } from './account.js?v=1babd93';
+import { createMirror, clone } from './mirror.js?v=1babd93';
 
 export const COLORS = ['#7aa2f7', '#9ece6a', '#f7768e', '#e0af68', '#bb9af7', '#2ac3de', '#ff9e64', '#73daca'];
 
@@ -243,6 +243,19 @@ export function setSectionsLocked(id, locked) {
 // The dashboard home: one note of the project shown on its dashboard, as a section of its own
 // ({ note, view }: a database shows only that view of its own), or null.
 export const homeOf = p => (p?.home?.note ? p.home : null);
+
+// How tall the dashboard home gets: null (as tall as the note), 'small', 'medium' or 'full' (a third,
+// two thirds or all of the dashboard's visible height; what doesn't fit scrolls inside it).
+const HOME_HEIGHTS = ['small', 'medium', 'full'];
+export const homeHeightOf = p => (HOME_HEIGHTS.includes(p?.homeHeight) ? p.homeHeight : null);
+
+export function setHomeHeight(id, height) {
+  const p = getProject(id);
+  if (!p) return;
+  if (HOME_HEIGHTS.includes(height)) p.homeHeight = height;
+  else delete p.homeHeight;
+  save();
+}
 
 export function setHome(id, home) {
   const p = getProject(id);

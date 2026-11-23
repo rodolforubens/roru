@@ -1902,6 +1902,22 @@ html.mobile .gl-large { --gs: 240px; --gh: 200px; }
 .np-home .np-scroll { overflow: visible; }
 .np-home .np-doc { max-width: none; margin: 0; padding: 0; }
 .np-home .np-children { margin-top: 0; }
+/* its max height (the home's menu): a third, two thirds or all of the dashboard's visible height
+   (--avail, measured in notes.js). What doesn't fit scrolls inside it (a database's bar stays), and a
+   canvas takes that height. Not in focus mode, which takes the window. */
+.dash-home[data-height="small"] { --hm-max: max(160px, calc(var(--avail, 70vh) / 3)); }
+.dash-home[data-height="medium"] { --hm-max: max(160px, calc(var(--avail, 70vh) * 2 / 3)); }
+.dash-home[data-height="full"] { --hm-max: max(160px, calc(var(--avail, 70vh) - 56px)); }
+.dash-home[data-height]:not(:has(.cv-focus)) .hm-body { display: flex; flex-direction: column; max-height: var(--hm-max); }
+.dash-home[data-height]:not(:has(.cv-focus)) .np-home { flex: 0 1 auto; min-height: 0; }
+.dash-home[data-height]:not(:has(.cv-focus)) .np-home .np-scroll { flex: 0 1 auto; overflow: auto; }
+.dash-home[data-height]:not(:has(.cv-focus)) .np-db .np-scroll,
+.dash-home[data-height]:not(:has(.cv-focus)) .np-db .np-doc,
+.dash-home[data-height]:not(:has(.cv-focus)) .np-db .np-children,
+.dash-home[data-height]:not(:has(.cv-focus)) .np-db .cv { display: flex; flex-direction: column; flex: 0 1 auto; min-height: 0; overflow: hidden; }
+.dash-home[data-height]:not(:has(.cv-focus)) .np-db .cv-bar { flex: none; }
+.dash-home[data-height]:not(:has(.cv-focus)) .np-db .cv-body { flex: 0 1 auto; min-height: 0; overflow: auto; }
+.dash-home[data-height]:not(:has(.cv-focus)) .cvs { height: calc(var(--hm-max) - 44px); }
 
 .dash-sec-head { display: flex; align-items: center; gap: 6px; margin: 4px 24px 8px; }
 .dash-sec-head .dash-sec { margin: 0; flex: 1; }
