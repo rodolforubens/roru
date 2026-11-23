@@ -4,13 +4,13 @@
 // anywhere, see canvas.js). Also the properties
 // block of an item's page, which shares the value editors with the table.
 // A Branch property links a note to a branch of one of the space's repositories (notes as tasks).
-import * as S from './notes-store.js?v=db85e2e';
-import * as G from './git.js?v=db85e2e';
-import { esc, icon, folderName, store } from './util.js?v=db85e2e';
-import { desktop } from './platform.js?v=db85e2e';
-import { localPath, sharedPath } from './projects.js?v=db85e2e';
-import { pickEmoji } from './emoji.js?v=db85e2e';
-import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=db85e2e';
+import * as S from './notes-store.js?v=ebf803c';
+import * as G from './git.js?v=ebf803c';
+import { esc, icon, folderName, store } from './util.js?v=ebf803c';
+import { desktop } from './platform.js?v=ebf803c';
+import { localPath, sharedPath } from './projects.js?v=ebf803c';
+import { pickEmoji } from './emoji.js?v=ebf803c';
+import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=ebf803c';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -23,8 +23,8 @@ let host = null;
 // modal, confirmBox, toast }.
 export function initViews(h) {
   host = h;
-  // Delete removes the selected notes (after asking), Escape clears the selection, or else leaves
-  // the focus mode (a peek over it closes first: see notes.js)
+  // Delete removes the selected notes (after asking), Escape leaves a card's edit mode, or clears the
+  // selection, or else leaves the focus mode (a peek over it closes first: see notes.js)
   addEventListener('keydown', e => {
     if (e.defaultPrevented || $('#modal-root').childElementCount || !$('#menu').hidden || picker) return;
     const f = [...mounted].find(x => x.focused && x.el.isConnected);
@@ -40,6 +40,9 @@ export function initViews(h) {
       // being typed)
       if (!f || e.key !== 'Escape' || e.target.closest('input, textarea') || f.el.contains(e.target)) return;
     }
+    // (a board's card in edit mode leaves it first)
+    const ed = [...mounted].find(x => x.el.isConnected && x.editCard);
+    if (ed && e.key === 'Escape') { e.preventDefault(); return leaveEdit(ed); }
     const c = [...mounted].find(x => x.el.isConnected && x.sel?.size);
     // (Escape is taken here, so it doesn't also close a peek)
     if (c && e.key === 'Escape') { e.preventDefault(); return select(c, []); }
@@ -652,6 +655,8 @@ function paint(c) {
   c.dirty = false;
   const key = S.collectionKey(c.space, c.parent), col = S.getCollection(key), view = activeView(col);
   const notes = S.childrenOf(c.space, c.parent);
+  // (a card in edit mode that isn't on the board anymore: gone, or another view shown)
+  if (c.editCard && (view.type !== 'board' || !notes.some(n => n.id === c.editCard))) endEdit(c);
   // drawing again keeps where the board, the table and the view tabs were scrolled to (a card
   // dropped in a column further right would otherwise send the board back to its first column)
   const scrolled = c.view === view.id ? SCROLLERS.map(sel => { const x = $(sel, c.el); return x && [x.scrollLeft, x.scrollTop]; }) : [];
@@ -691,7 +696,7 @@ function paint(c) {
     body.innerHTML = galleryHtml(view, notes);
     fillGallery(c, notes);
   } else {
-    body.innerHTML = boardHtml(col, view, notes);
+    body.innerHTML = boardHtml(col, view, notes, c.editCard);
     if (view.stretch || PREVIEWS[view.preview]) fillSnippets(c, notes, view.preview === 'large');
     if (view.stretch) showGaps(c);
   }
@@ -932,6 +937,78 @@ function renameCard(card, id, done = null) {
   input.select();
 }
 
+// ---------- a board's card in edit mode ----------
+
+// The pencil of a board's card puts it in edit mode (`c.editCard`): its title is typed at once, and
+// every property the view shows is a field, the empty ones too, a click on one edits it there (like
+// in an item's page). A click elsewhere, Escape, or Enter or Escape in the title leaves it, and the
+// card shows only the properties that have a value again: the empty fields left as they were go.
+const cardOf = (c, id) => c.el.querySelector(`.bd-card[data-note="${CSS.escape(id)}"]`);
+
+function editCard(c, id) {
+  // (what is being typed elsewhere in the view is saved first)
+  const a = document.activeElement;
+  if (a && c.el.contains(a) && a.matches('input, textarea')) a.blur();
+  if (c.editCard && c.editCard !== id) leaveEdit(c);
+  if (c.editCard !== id) {
+    c.editCard = id;
+    // (from the menus and pickers it opens, the card stays in edit mode)
+    c.editOut = e => {
+      if (!c.el.isConnected) return endEdit(c);
+      if (cardOf(c, id)?.contains(e.target) || e.target.closest?.('.opt-pop, #menu, #modal-root')) return;
+      leaveEdit(c);
+    };
+    addEventListener('pointerdown', c.editOut, true);
+    paintCard(c, id);
+  }
+  editPart(c, id, 'title');
+}
+
+// Edits the title (`part` 'title') or a property of the card in edit mode. What was being typed on it
+// is saved first, which draws the card again (still in edit mode), so the part is looked up after it.
+function editPart(c, id, part) {
+  const a = document.activeElement;
+  if (a && c.el.contains(a) && a.matches('input, textarea')) a.blur();
+  const card = cardOf(c, id);
+  if (!card || c.editCard !== id) return;
+  if (part === 'title') {
+    return renameCard(card, id, (how, text) => {
+      // Enter and Escape leave the edit mode; the focus going to a field, or elsewhere, doesn't by itself
+      if (how !== 'blur') endEdit(c);
+      if (how !== 'escape' && text !== (S.getNote(id)?.title || '')) S.renameNote(id, text);
+      else paintCard(c, id);
+    });
+  }
+  const p = propOf(S.collectionKey(c.space, c.parent), part), field = card.querySelector(`.bd-field[data-prop="${CSS.escape(part)}"] .bd-fv`);
+  if (p && field) editValue(field, id, p);
+}
+
+// Leaves the edit mode: a value being typed is saved (its views drawn again), else the card alone is
+// drawn again, so the click that left it still does what it does on the rest of the board.
+function leaveEdit(c) {
+  const id = c.editCard;
+  if (!id) return;
+  endEdit(c);
+  const a = document.activeElement;
+  if (a && cardOf(c, id)?.contains(a) && a.matches('input, textarea')) a.blur();
+  else paintCard(c, id);
+}
+
+function endEdit(c) {
+  removeEventListener('pointerdown', c.editOut, true);
+  c.editCard = c.editOut = null;
+}
+
+// Draws one card of a board again (in edit mode or not), the rest of it as it is.
+function paintCard(c, id) {
+  const el = cardOf(c, id), n = S.getNote(id);
+  const col = S.getCollection(S.collectionKey(c.space, c.parent)), view = activeView(col), g = groupProp(col, view);
+  if (!el || !n || !g || view.type !== 'board' || c.dirty || editing(c.el)) return paint(c);
+  el.outerHTML = cardHtml(n, shownOf(col, view, g), view, c.editCard === id);
+  if (view.stretch || PREVIEWS[view.preview]) fillSnippets(c, [n], view.preview === 'large');
+  paintSelection(c);
+}
+
 // ---------- gallery ----------
 
 // A gallery shows the items as tiles in a grid, each with the first picture of its page (else its
@@ -990,24 +1067,36 @@ const PREVIEWS = { small: 'Small', large: 'Large' };
 
 const groupProp = (col, view) => col.schema.find(p => p.id === view.groupBy && p.type === 'select') || col.schema.find(p => p.type === 'select') || null;
 
-function boardHtml(col, view, notes) {
+// The properties a board's cards show: the view's, but the one of the columns.
+const shownOf = (col, view, g) => col.schema.filter(p => p.id !== g.id && !view.hidden?.includes(p.id));
+
+// A card shows the properties that have a value; in edit mode (`edit`, see editCard) every one the
+// view shows, the empty ones too, each a field with its name, ready to be filled.
+function cardHtml(n, shown, view, edit = false) {
+  const props = edit
+    ? (shown.length ? `<div class="bd-fields">${shown.map(p => `<div class="bd-field" data-prop="${p.id}">
+        <span class="bd-fn" title="${esc(p.name)}">${icon(TYPES[p.type][1])}<span>${esc(p.name)}</span></span>
+        <div class="bd-fv pt-${p.type}">${valueHtml(p, n.props?.[p.id]) || '<span class="pp-empty">Empty</span>'}</div></div>`).join('')}</div>` : '')
+    : shown.map(p => {
+      const v = n.props?.[p.id];
+      if (v == null || (p.type === 'checkbox' && !v)) return '';
+      return `<div class="bd-prop pt-${p.type}">${p.type === 'checkbox' ? `${valueHtml(p, v)}<span>${esc(p.name)}</span>` : valueHtml(p, v)}</div>`;
+    }).join('');
+  return `<div class="bd-card ${edit ? 'bd-editing' : ''}" data-note="${n.id}" draggable="${!edit}"><div class="bd-ct ${n.title ? '' : 'untitled'}">${n.icon || n.kind === 'database' ? icon(itemIcon(n), 'bd-ic') : ''}${esc(n.title || 'Untitled')}</div>${props}
+      ${(view.stretch || view.preview) && n.kind !== 'database' ? '<div class="bd-sx"></div>' : ''}<button class="cv-btn bd-edit" data-cv="rename-card" title="Edit">${icon('pencil')}</button></div>`;
+}
+
+// `editId`: the card in edit mode, if any.
+function boardHtml(col, view, notes, editId = null) {
   const g = groupProp(col, view);
   if (!g) {
     return `<div class="cv-empty bd-empty"><p>A board shows the notes in columns, one for each option of a select property like Status.</p>
       <button class="btn-sm" data-cv="add-status">${icon('plus')}Add a Status property</button></div>`;
   }
-  const shown = col.schema.filter(p => p.id !== g.id && !view.hidden?.includes(p.id));
+  const shown = shownOf(col, view, g);
   const known = new Set(g.options.map(o => o.id));
   const cardsOf = optId => notes.filter(n => (optId ? n.props?.[g.id] === optId : !known.has(n.props?.[g.id])));
-  const card = n => {
-    const props = shown.map(p => {
-      const v = n.props?.[p.id];
-      if (v == null || (p.type === 'checkbox' && !v)) return '';
-      return `<div class="bd-prop pt-${p.type}">${p.type === 'checkbox' ? `${valueHtml(p, v)}<span>${esc(p.name)}</span>` : valueHtml(p, v)}</div>`;
-    }).join('');
-    return `<div class="bd-card" data-note="${n.id}" draggable="true"><div class="bd-ct ${n.title ? '' : 'untitled'}">${n.icon || n.kind === 'database' ? icon(itemIcon(n), 'bd-ic') : ''}${esc(n.title || 'Untitled')}</div>${props}
-      ${(view.stretch || view.preview) && n.kind !== 'database' ? '<div class="bd-sx"></div>' : ''}<button class="cv-btn bd-edit" data-cv="rename-card" title="Rename">${icon('pencil')}</button></div>`;
-  };
+  const card = n => cardHtml(n, shown, view, n.id === editId);
   const label = o => (o ? chip(o) : `<span class="opt c-none">No ${esc(g.name)}</span>`);
   const column = (o, cards) => `<div class="bd-col" data-group="${o?.id || ''}">
       <div class="bd-head" ${o ? 'draggable="true" title="Drag to move the column"' : ''}>${label(o)}<span class="bd-n">${cards.length}</span>
@@ -1133,6 +1222,8 @@ function bindCollection(c) {
   const keyOf = () => S.collectionKey(c.space, c.parent);
 
   el.addEventListener('click', e => {
+    // (a card in edit mode doesn't open: its parts are edited as the button goes down, below)
+    if (e.target.closest('.bd-editing')) return;
     if (openBranchChip(e)) return;
     const key = keyOf(), col = S.getCollection(key), view = activeView(col);
     const tab = e.target.closest('.cv-tab');
@@ -1158,7 +1249,8 @@ function bindCollection(c) {
         if (view.type === 'canvas') return canvasNew(c);
         return c.create({});
       case 'new-row': return newRow(c);
-      case 'rename-card': return renameCard(btn.closest(CARD), id);
+      // (a board's card goes in edit mode, its properties too; a gallery's tile is only renamed)
+      case 'rename-card': return btn.closest('.bd-card') ? editCard(c, id) : renameCard(btn.closest(CARD), id);
       // (the tile after a gallery's last one: an item whose title is typed on its tile)
       case 'new-tile': return newRow(c);
       // (a column's buttons make a card that doesn't open: its title is typed on it)
@@ -1222,6 +1314,14 @@ function bindCollection(c) {
   });
 
   el.addEventListener('mousedown', e => boxSelect(c, e));
+  // A card in edit mode: its title or a property is edited where it is, as the button goes down (what
+  // was being typed on it is saved then, drawing the card again, and the click would be lost)
+  el.addEventListener('mousedown', e => {
+    const part = e.button === 0 && e.target.closest('.bd-editing .bd-ct, .bd-editing .bd-fv');
+    if (!part) return;
+    e.preventDefault();
+    editPart(c, part.closest('.bd-card').dataset.note, part.closest('.bd-field')?.dataset.prop || 'title');
+  });
 
   // The context menu of a selected note acts on the whole selection; on another note, on that one.
   // On a "New" button, it offers a database as the new item (right inside this one) instead of a page.

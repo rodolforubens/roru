@@ -1554,6 +1554,27 @@ body:has(.cv-focus) #peek.side:not([hidden]) { position: fixed; }
 .bd-ct { font-weight: 500; overflow-wrap: anywhere; }
 .bd-ct.untitled { color: var(--text-3); }
 .bd-prop { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: 12px; color: var(--text-2); }
+/* a card in edit mode (its pencil): the title and every property the view shows, the empty ones
+   too, as fields edited with a click */
+.bd-card.bd-editing { cursor: default; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.bd-card.bd-editing .bd-edit { display: none; }
+.bd-editing .bd-ct { margin: -2px -4px; padding: 2px 4px; border-radius: 4px; cursor: text; }
+.bd-editing .bd-ct:hover { background: var(--hover); }
+.bd-fields { display: flex; flex-direction: column; gap: 1px; margin: 0 -6px; }
+.bd-field { display: flex; align-items: flex-start; gap: 2px; min-width: 0; font-size: 12px; }
+.bd-fn {
+  display: flex; align-items: center; gap: 5px; flex: none; width: 38%; max-width: 120px; height: 26px; padding: 0 6px;
+  overflow: hidden; color: var(--text-3); white-space: nowrap;
+}
+.bd-fn span { overflow: hidden; text-overflow: ellipsis; }
+.bd-fn .ic { width: 12px; height: 12px; flex: none; }
+.bd-fv {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px; flex: 1; min-width: 0; min-height: 26px; padding: 0 6px;
+  border-radius: 5px; color: var(--text-2); cursor: pointer; overflow-wrap: anywhere;
+}
+.bd-fv:hover { background: var(--hover); }
+.bd-fv.editing { padding: 0; box-shadow: inset 0 0 0 2px var(--accent); }
+.bd-fv .cell-input { min-height: 26px; padding: 0 6px; border-radius: 5px; font-size: 12px; }
 .bd-new, .bd-addcol {
   display: flex; align-items: center; gap: 6px; padding: 6px; border: none; border-radius: 6px;
   background: none; color: var(--text-3); cursor: pointer; font-size: 13px; white-space: nowrap;
@@ -1641,7 +1662,9 @@ html.mobile .gl-large { --gs: 240px; --gh: 200px; }
   .bd-stretch .bd-sx:empty { display: none; }
   .bd-stretch .bd-cv { display: none; }
   /* (only a title: in the middle of the post-it) */
-  .bd-stretch .bd-card:not(:has(.bd-prop, .bd-sx:not(:empty), .bd-ct-edit)) { justify-content: center; text-align: center; }
+  .bd-stretch .bd-card:not(:has(.bd-prop, .bd-fields, .bd-sx:not(:empty), .bd-ct-edit)) { justify-content: center; text-align: center; }
+  /* (in edit mode, as tall as its fields ask) */
+  .bd-stretch .bd-card.bd-editing { aspect-ratio: auto; overflow: visible; }
   .bd-stretch .bd-card.drop-before::before { top: 0; bottom: 0; left: -6px; right: auto; width: 2px; height: auto; }
   .bd-stretch .bd-col.drop-end .bd-cards::after { width: 2px; height: 60px; }
   .bd-gap:not([hidden]) {
