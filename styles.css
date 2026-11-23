@@ -1885,6 +1885,24 @@ html.mobile .gl-large { --gs: 240px; --gh: 200px; }
 .dash-block.drop-after { box-shadow: 0 2px 0 var(--accent); }
 .dash-iconbtn.on { color: var(--accent); }
 
+/* the dashboard home: a note of the project as a section of its own, its title in the section's
+   head and its text (or one view of a database) under it (see renderHomeNote in notes.js) */
+.dash-block:has(> .dash-home:empty) { display: none; }
+.dash-home { margin: 0 24px 28px; }
+.hm-head { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.hm-title {
+  display: inline-flex; align-items: center; gap: 6px; min-width: 0; margin: 0 0 0 -5px; padding: 1px 5px;
+  border: none; border-radius: 6px; background: none; color: var(--text-2); font: 650 13px/1.5 var(--font); cursor: pointer;
+}
+.hm-title:hover { background: var(--hover); color: var(--text); }
+.hm-title .ic { width: 15px; height: 15px; flex: none; }
+.hm-title span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.np-home { height: auto; background: none; }
+.np-home .np-bar, .np-home .np-icon-row, .np-home .np-title, .np-home .np-props { display: none; }
+.np-home .np-scroll { overflow: visible; }
+.np-home .np-doc { max-width: none; margin: 0; padding: 0; }
+.np-home .np-children { margin-top: 0; }
+
 .dash-sec-head { display: flex; align-items: center; gap: 6px; margin: 4px 24px 8px; }
 .dash-sec-head .dash-sec { margin: 0; flex: 1; }
 .dash-sec-head .btn-sm { display: inline-flex; align-items: center; gap: 5px; margin: 0; }
@@ -2028,7 +2046,8 @@ html.mobile .dash-head { padding: 16px 16px 12px; }
 /* (links in the same two columns as the notes' cards) */
 html.mobile .dash-links { margin: 0 16px 24px; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 html.mobile .lk-card .lk-body { padding: 8px 10px 9px; }
-html.mobile .dash-notes { margin: 0 16px 24px; }
+html.mobile .dash-notes, html.mobile .dash-home { margin: 0 16px 24px; }
+html.mobile .np-home .np-doc { padding: 0; }
 html.mobile .bd { scroll-snap-type: x mandatory; }
 html.mobile .bd-col { width: calc(100vw - 72px); scroll-snap-align: start; }
 /* databases take the whole width of the phone: their bar and lists keep the text's margin, and

@@ -2,10 +2,10 @@
 // its upstream, local changes, last commit), and fetch/pull for all of them at once.
 // Pulls here are fast-forward only, so they never create merge commits or stop on conflicts:
 // a branch that diverged from its upstream is reported, to be merged or rebased in its tab.
-import * as G from './git.js?v=ebf803c';
-import * as P from './projects.js?v=ebf803c';
-import { esc, fmtRelative, icon, folderName, normPath, plural } from './util.js?v=ebf803c';
-import { desktop, invoke } from './platform.js?v=ebf803c';
+import * as G from './git.js?v=36c98f4';
+import * as P from './projects.js?v=36c98f4';
+import { esc, fmtRelative, icon, folderName, normPath, plural } from './util.js?v=36c98f4';
+import { desktop, invoke } from './platform.js?v=36c98f4';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -37,7 +37,8 @@ async function pool(items, limit, fn) {
 // =====================================================================
 
 // `h`: { open(path), pickFolders({ multiple, title }), toast, showMenu, modal, copy,
-// renameProject(id), changed() (after folders were added or removed), renderNotes(el, projectId) }.
+// renameProject(id), changed() (after folders were added or removed), renderNotes(el, projectId),
+// renderHome(el, projectId) (the dashboard home: the note shown on the dashboard, or nothing) }.
 export function initDashboard(h) {
   host = h;
 }
@@ -49,6 +50,8 @@ const project = () => P.getProject(shown()?.dataset.project);
 export function renderDashboard(id) {
   if (!P.getProject(id)) return;
   const blocks = {
+    // (empty, and so hidden, while the project has no dashboard home)
+    home: '<div class="dash-home"></div>',
     folders: `<div class="dash-sec-head"><h2 class="dash-sec">Folders</h2>
       ${desktop ? `<button class="btn-sm" data-act="add-folders">${icon('plus')}Folder</button>` : ''}</div><div class="dash-list"></div>`,
     links: `<div class="dash-sec-head"><h2 class="dash-sec">Links</h2>
@@ -62,20 +65,28 @@ export function renderDashboard(id) {
   bindDrag(shown());
   paint();
   paintLinks();
+  host.renderHome($('.dash-home', shown()), id);
   host.renderNotes($('.dash-notes', shown()), id);
   reloadDashboard();
 }
 
 // After the project changed (renamed, folders added or removed): repaints it and reads new folders.
-// Also after it changed elsewhere (see projects.js): its sections, links and name are drawn again.
+// Also after it changed elsewhere (see projects.js): its sections, links, home and name are drawn again.
 export function updateDashboard() {
   const p = project();
   if (!p) return;
-  const root = shown();
-  P.sections(p).forEach(sec => root.appendChild(root.querySelector(`.dash-block[data-sec="${sec}"]`)));
+  placeSections(shown(), p);
   paint();
   paintLinks();
+  host.renderHome($('.dash-home', shown()), p.id);
   if (desktop) pool(P.folderPaths(p).filter(path => !info.has(path) && !busy.has(path)), PARALLEL, loadFolder);
+}
+
+// Puts the sections in the project's order. They are moved, not drawn again, so the folders and notes
+// keep their state; and only when the order changed, so the text being typed in the home keeps the focus.
+function placeSections(root, p) {
+  const order = P.sections(p), now = [...root.querySelectorAll(':scope > .dash-block')].map(b => b.dataset.sec);
+  if (order.join() !== now.join()) order.forEach(sec => root.appendChild(root.querySelector(`:scope > .dash-block[data-sec="${sec}"]`)));
 }
 
 // Reads the state of every folder again (F5, or when the window gets the focus back).
@@ -389,8 +400,7 @@ function bindDrag(root) {
     const p = project(), late = after(el, e);
     if (dragging.kind === 'sec') {
       P.moveSection(p.id, dragging.id, el.dataset.sec, late);
-      // the sections are moved, not drawn again, so the folders and notes keep their state
-      P.sections(p).forEach(sec => root.appendChild(root.querySelector(`.dash-block[data-sec="${sec}"]`)));
+      placeSections(root, p);
     } else if (dragging.kind === 'folder') {
       P.moveFolder(p.id, dragging.id, el.dataset.path, late);
       paint();

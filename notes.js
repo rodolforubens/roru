@@ -5,17 +5,17 @@
 // below as it was. Pages nest in other pages through their text (a link to the nested page, or a
 // database block); databases show in the tree as one item. Tabs and spaces belong to app.js (see
 // initNotesUi); the table, board and canvas views and the properties are in views.js (and canvas.js).
-import * as S from './notes-store.js?v=ebf803c';
-import * as G from './git.js?v=ebf803c';
-import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=ebf803c';
-import { openImageViewer, copyImage } from './image-viewer.js?v=ebf803c';
-import { pickEmoji } from './emoji.js?v=ebf803c';
-import { toMarkdown } from './markdown.js?v=ebf803c';
-import { sharedPath } from './projects.js?v=ebf803c';
-import { initViews, renderCollection, renderProps, repaintViews, repaintItem, valueText, createBranchFor, addView, focusedDb, VIEW_KINDS, viewName } from './views.js?v=ebf803c';
-import { importNotion } from './notion-import.js?v=ebf803c';
-import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative, fmtSize } from './util.js?v=ebf803c';
-import { desktop, invoke, isMobile } from './platform.js?v=ebf803c';
+import * as S from './notes-store.js?v=36c98f4';
+import * as G from './git.js?v=36c98f4';
+import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=36c98f4';
+import { openImageViewer, copyImage } from './image-viewer.js?v=36c98f4';
+import { pickEmoji } from './emoji.js?v=36c98f4';
+import { toMarkdown } from './markdown.js?v=36c98f4';
+import { sharedPath, getProject, homeOf, setHome } from './projects.js?v=36c98f4';
+import { initViews, renderCollection, renderProps, repaintViews, repaintItem, valueText, createBranchFor, addView, focusedDb, VIEW_KINDS, viewName } from './views.js?v=36c98f4';
+import { importNotion } from './notion-import.js?v=36c98f4';
+import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative, fmtSize } from './util.js?v=36c98f4';
+import { desktop, invoke, isMobile } from './platform.js?v=36c98f4';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -48,6 +48,7 @@ export async function initNotesUi(h) {
     deleteNotes,
     folders: h.folders, reveal: h.reveal, gitChanged: h.gitChanged, preview: previewOf,
     peek: (id, mode) => openNote(id, mode),
+    homeItems: (id, view) => homeItems(id, view),
     // a picture added to a note's text (at its end): returns its `src`
     addImage: async (id, file) => {
       const src = await uploadImage(id, file);
@@ -72,6 +73,7 @@ export async function initNotesUi(h) {
     for (const t of trees) if (t.el.isConnected) paintTree(t); else trees.delete(t);
     for (const p of cardPanels) if (p.el.isConnected) paintCards(p); else cardPanels.delete(p);
     for (const p of pages) if (p.el.isConnected) paintMeta(p); else destroyPage(p);
+    for (const h of homes) if (h.el.isConnected) paintHome(h); else homes.delete(h);
     repaintViews();
     // mentions of renamed notes show their new title (and the deleted ones, that they are)
     for (const id of [...ids, ...(removed || [])]) {
@@ -480,6 +482,7 @@ export function noteMenuItems(id, ctx = 'list') {
     ...(inTab || isMobile() || (ctx === 'peek' && peek?.mode === 'center') ? [] : [{ label: 'Open in center peek', run: () => openNote(id, 'center') }]),
     { label: db ? 'Open items in' : 'Open sub-pages in', items: () => openInItems(id) },
     { label: n.icon ? 'Change icon…' : 'Add icon…', run: r => pickEmoji(r, n.icon, e => S.setIcon(id, e)) },
+    ...homeItems(id),
     '-',
     ...(db ? [{ label: 'Add an item', run: () => newNote({ space: n.space, parent: id }) }] : [
       { label: 'Add a page inside', run: () => newNote({ space: n.space, parent: id }) },
@@ -496,6 +499,34 @@ export function noteMenuItems(id, ctx = 'list') {
     '-',
     { label: 'Delete…', danger: true, run: () => deleteNotes([id]) },
   ];
+}
+
+// "Use as dashboard home": the dashboard of the note's project shows it as a section of its own (one
+// note per project: choosing another one replaces it). A database is shown through one of its views,
+// picked in a submenu, or `view` (from the menu of that view).
+function homeItems(id, view = null) {
+  const n = S.getNote(id), p = getProject(n?.space);
+  if (!n || !p) return [];
+  const shown = homeNoteOf(p.id), check = on => (on ? '  ✓' : '');
+  const set = h => {
+    setHome(p.id, h);
+    paintHomes();
+    if (h) host.toast(`Shown on the dashboard of ${p.name}`, 'ok');
+  };
+  const label = on => `Use as dashboard home${check(on)}`;
+  if (n.kind !== 'database') return [{ label: label(shown?.id === id), run: () => set(shown?.id === id ? null : { note: id }) }];
+  if (view) {
+    const on = shown?.id === id && shown.view === view;
+    return [{ label: label(on), run: () => set(on ? null : { note: id, view }) }];
+  }
+  const views = S.getCollection(id).views;
+  return [{
+    label: label(shown?.id === id),
+    items: () => [
+      ...views.map(v => ({ label: `${v.name}${check(shown?.id === id && shown.view === v.id)}`, run: () => set({ note: id, view: v.id }) })),
+      ...(shown?.id === id ? ['-', { label: 'Stop using it as dashboard home', run: () => set(null) }] : []),
+    ],
+  }];
 }
 
 // The choices of where the notes inside a note open: its own, or like its parent (which shows what
@@ -654,9 +685,17 @@ function renderDatabaseBlock(el, id, page) {
   });
 }
 
-// `place`: 'tab' or 'peek'. A page shows its title, its properties (when it is an item of a
-// database) and its text; a database, its title and its views across the page.
-function mountPage(container, id, place) {
+// Pages whose place went away with what was around them (the dashboard, when another tab is shown)
+// close their editors.
+export function releasePages() {
+  for (const p of pages) if (!p.el.isConnected) destroyPage(p);
+}
+
+// `place`: 'tab', 'peek' or 'home' (the dashboard home: only the text of a page, or one view of a
+// database, `view`; its title is in the section's head). A page shows its title, its properties (when
+// it is an item of a database) and its text; a database, its title and its views across the page.
+function mountPage(container, id, place, { view = null } = {}) {
+  releasePages();
   const note = S.getNote(id), space = note.space, db = note.kind === 'database';
   // (a database in full screen hides its icon and title: see focusedDb in views.js)
   container.innerHTML = `<div class="np np-${place} ${db ? 'np-db' : ''} ${db && focusedDb(id) ? 'np-focus' : ''}">
@@ -672,12 +711,12 @@ function mountPage(container, id, place) {
   pages.add(page);
   if (db) {
     renderCollection($('.np-children', el), {
-      space, parent: id, ctx: 'page',
+      space, parent: id, ctx: place === 'home' ? 'home' : 'page', pin: place === 'home' ? view : null,
       open: openItem,
       create: (props, open) => newNote({ space, parent: id, props, open }),
       createDatabase: (view, props, open) => newDatabase({ space, parent: id, view, props, open, block: false }),
     });
-  } else {
+  } else if (place !== 'home') {
     renderProps($('.np-props', el), id);
   }
   if (place === 'peek') {
@@ -744,8 +783,13 @@ function mountPage(container, id, place) {
       expand(id);
       editor.chain().focus().deleteRange(range).insertContent({ type: 'database', attrs: { id: d.id } }).run();
     };
+    // (on this computer, another editor of the note, like the dashboard home's under a peek of it,
+    // follows what is typed here; in the account they share its document)
+    const follow = json => {
+      for (const p of pages) if (p !== page && p.id === id && p.editor && !p.editor.isDestroyed) p.editor.commands.setContent(json, { emitUpdate: false });
+    };
     page.editor = createEditor($('.np-editor', el), {
-      ...(src.ydoc ? { ydoc: src.ydoc } : { content: src.content, onChange: json => S.saveContent(id, json) }),
+      ...(src.ydoc ? { ydoc: src.ydoc } : { content: src.content, onChange: json => { S.saveContent(id, json); follow(json); } }),
       mentions: q => mentionItems(q, id),
       mentionView,
       fileUrl: S.fileUrl,
@@ -824,7 +868,8 @@ function paintMeta(page) {
   $('.np-icon-row', page.el).innerHTML = n.icon
     ? `<button class="np-icon" data-np="icon" title="Change the icon">${icon(n.icon)}</button>`
     : `<button class="np-add-icon" data-np="icon">${icon('smile')}Add icon</button>`;
-  page.el.classList.toggle('np-wide', S.wideViewsOf(page.id));
+  // (the dashboard home takes the dashboard's width already)
+  page.el.classList.toggle('np-wide', page.place !== 'home' && S.wideViewsOf(page.id));
 }
 
 function pageAction(page, act, el, e) {
@@ -921,6 +966,66 @@ export function renderNotesPanel(el, space) {
   });
   if (cards) mountCards($('.nt-body', el), space);
   else mountTree($('.nt-body', el), space, { sidebar: false });
+}
+
+// ---------- the dashboard home ----------
+
+// A project's dashboard can show one of its notes as a section of its own ("Use as dashboard home" in
+// the note's menu, kept in the project: see homeOf in projects.js): a page's text, edited right
+// there, or one view of a database (the one chosen, else the view it shows). Hidden while the note
+// is in the trash, gone, or moved to another space.
+const homes = new Set(); // { el, space, key (what is shown), page }
+
+// The note the dashboard of `space` shows: { id, view } (a database's view that is still there).
+function homeNoteOf(space) {
+  const h = homeOf(getProject(space)), n = h && S.getNote(h.note);
+  if (!n || n.space !== space) return null;
+  if (n.kind !== 'database') return { id: n.id, view: null };
+  const col = S.getCollection(n.id), v = col.views.find(x => x.id === h.view) || col.views.find(x => x.id === col.active) || col.views[0];
+  return { id: n.id, view: v?.id ?? null };
+}
+
+export function renderHomeNote(el, space) {
+  let h = [...homes].find(x => x.el === el);
+  if (!h) {
+    h = { el, space, key: '', page: null };
+    homes.add(h);
+    el.addEventListener('click', e => {
+      const b = e.target.closest('[data-hm]'), id = h.page?.id;
+      if (!b || !id) return;
+      if (b.dataset.hm === 'open') return openNote(id, e.ctrlKey || e.metaKey ? 'tab' : undefined);
+      const r = b.getBoundingClientRect();
+      host.showMenu(r.right - 220, r.bottom + 4, noteMenuItems(id, 'home'));
+    });
+    el.addEventListener('contextmenu', e => {
+      if (!e.target.closest('.hm-head') || !h.page) return;
+      e.preventDefault();
+      host.showMenu(e.clientX, e.clientY, noteMenuItems(h.page.id, 'home'));
+    });
+  }
+  h.space = space;
+  paintHome(h);
+}
+
+const paintHomes = () => { for (const h of homes) if (h.el.isConnected) paintHome(h); else homes.delete(h); };
+
+// The note is mounted again only when another one (or another view) is shown, so what is being typed
+// in it stays; otherwise only its head is drawn again.
+function paintHome(h) {
+  const home = homeNoteOf(h.space), key = home ? `${home.id}:${home.view || ''}` : '';
+  if (key !== h.key || !h.page?.alive || !h.el.contains(h.page.el)) {
+    if (h.page) destroyPage(h.page);
+    h.page = null;
+    h.key = key;
+    if (!home) { h.el.innerHTML = ''; return; }
+    h.el.innerHTML = `<div class="hm-head">
+        <button class="hm-title" data-hm="open" title="Open"></button><span class="spacer"></span>
+        <button class="nt-btn" data-hm="open" title="Open">${icon('expand')}</button>
+        <button class="nt-btn" data-hm="menu" title="More">${icon('more')}</button></div>
+      <div class="hm-body"></div>`;
+    h.page = mountPage($('.hm-body', h.el), home.id, 'home', { view: home.view });
+  }
+  if (home) $('.hm-title', h.el).innerHTML = `${icon(noteIcon(home.id))}<span>${esc(noteTitle(home.id))}</span>`;
 }
 
 // ---------- the notes as cards ----------

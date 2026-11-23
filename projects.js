@@ -8,9 +8,9 @@
 // computer (and in the mentions and Branch values of the notes); each computer can point it to a
 // folder of its own (see "Where the folders are on this computer" below), and the rest of the UI
 // (tabs, the dashboard, Git) only sees those local paths.
-import { store } from './util.js?v=ebf803c';
-import { db } from './account.js?v=ebf803c';
-import { createMirror, clone } from './mirror.js?v=ebf803c';
+import { store } from './util.js?v=36c98f4';
+import { db } from './account.js?v=36c98f4';
+import { createMirror, clone } from './mirror.js?v=36c98f4';
 
 export const COLORS = ['#7aa2f7', '#9ece6a', '#f7768e', '#e0af68', '#bb9af7', '#2ac3de', '#ff9e64', '#73daca'];
 
@@ -212,11 +212,15 @@ export function moveLink(id, linkId, targetId, after = false) {
 // Sections of the dashboard: their order (stacked vertically) and whether it is locked
 // =====================================================================
 
-export const SECTIONS = ['folders', 'links', 'notes'];
+// ('home' only shows while the project has a dashboard home: see homeOf)
+export const SECTIONS = ['home', 'folders', 'links', 'notes'];
 
+// A section the order doesn't have yet (one that came later) goes right after the one before it in
+// SECTIONS, so the dashboard home starts at the top.
 export function sections(p) {
-  const order = (p?.sections || []).filter(s => SECTIONS.includes(s));
-  return [...new Set([...order, ...SECTIONS])];
+  const order = [...new Set((p?.sections || []).filter(s => SECTIONS.includes(s)))];
+  SECTIONS.forEach((s, i) => { if (!order.includes(s)) order.splice(i ? order.indexOf(SECTIONS[i - 1]) + 1 : 0, 0, s); });
+  return order;
 }
 
 export function moveSection(id, sec, target, after = false) {
@@ -233,6 +237,18 @@ export function setSectionsLocked(id, locked) {
   const p = getProject(id);
   if (!p) return;
   p.sectionsLocked = locked;
+  save();
+}
+
+// The dashboard home: one note of the project shown on its dashboard, as a section of its own
+// ({ note, view }: a database shows only that view of its own), or null.
+export const homeOf = p => (p?.home?.note ? p.home : null);
+
+export function setHome(id, home) {
+  const p = getProject(id);
+  if (!p) return;
+  if (home) p.home = { note: home.note, ...(home.view ? { view: home.view } : {}) };
+  else delete p.home;
   save();
 }
 

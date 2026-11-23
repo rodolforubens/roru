@@ -1,20 +1,20 @@
-import * as G from './git.js?v=ebf803c';
-import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=ebf803c';
-import { renderDiff, renderSubmodule, parseSubmoduleLog, loadSizes } from './diff.js?v=ebf803c';
-import { loadMedia } from './media-diff.js?v=ebf803c';
-import { partialPatch } from './patch.js?v=ebf803c';
-import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=ebf803c';
-import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=ebf803c';
-import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=ebf803c';
-import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=ebf803c';
-import * as P from './projects.js?v=ebf803c';
-import { syncStatus, onSyncStatus } from './mirror.js?v=ebf803c';
-import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=ebf803c';
-import * as S from './notes-store.js?v=ebf803c';
-import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=ebf803c';
-import * as M from './mobile.js?v=ebf803c';
-import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=ebf803c';
-import { initNotesUi, mountNoteTab, leaveNoteTab, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, databaseKinds, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=ebf803c';
+import * as G from './git.js?v=36c98f4';
+import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=36c98f4';
+import { renderDiff, renderSubmodule, parseSubmoduleLog, loadSizes } from './diff.js?v=36c98f4';
+import { loadMedia } from './media-diff.js?v=36c98f4';
+import { partialPatch } from './patch.js?v=36c98f4';
+import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=36c98f4';
+import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=36c98f4';
+import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=36c98f4';
+import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=36c98f4';
+import * as P from './projects.js?v=36c98f4';
+import { syncStatus, onSyncStatus } from './mirror.js?v=36c98f4';
+import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=36c98f4';
+import * as S from './notes-store.js?v=36c98f4';
+import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=36c98f4';
+import * as M from './mobile.js?v=36c98f4';
+import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=36c98f4';
+import { initNotesUi, mountNoteTab, leaveNoteTab, releasePages, renderHomeNote, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, databaseKinds, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=36c98f4';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -702,6 +702,7 @@ async function activateRepo(root) {
   saveTabs();
   document.body.classList.remove('no-repo');
   $('#main').innerHTML = '';
+  releasePages(); // (the dashboard home's editor)
   renderTabs();
   const loading = addPending({ text: 'Loading', on: [at.tab(root)], quiet: true, delay: 200 });
   await refresh();
@@ -800,6 +801,7 @@ function showPage(note) {
   renderOpBanner();
   if (note) mountNoteTab(note);
   else renderHome();
+  releasePages(); // (the editor of a dashboard home left behind)
   M.visited({ space: tabs.space, note });
 }
 
@@ -3605,6 +3607,7 @@ initDashboard({
   pickFolders, toast, showMenu, modal, copy, renameProject,
   changed: projectsChanged,
   renderNotes: (el, id) => renderNotesPanel(el, id),
+  renderHome: (el, id) => renderHomeNote(el, id),
 });
 bindRail();
 

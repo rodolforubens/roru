@@ -4,13 +4,13 @@
 // anywhere, see canvas.js). Also the properties
 // block of an item's page, which shares the value editors with the table.
 // A Branch property links a note to a branch of one of the space's repositories (notes as tasks).
-import * as S from './notes-store.js?v=ebf803c';
-import * as G from './git.js?v=ebf803c';
-import { esc, icon, folderName, store } from './util.js?v=ebf803c';
-import { desktop } from './platform.js?v=ebf803c';
-import { localPath, sharedPath } from './projects.js?v=ebf803c';
-import { pickEmoji } from './emoji.js?v=ebf803c';
-import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=ebf803c';
+import * as S from './notes-store.js?v=36c98f4';
+import * as G from './git.js?v=36c98f4';
+import { esc, icon, folderName, store } from './util.js?v=36c98f4';
+import { desktop } from './platform.js?v=36c98f4';
+import { localPath, sharedPath } from './projects.js?v=36c98f4';
+import { pickEmoji } from './emoji.js?v=36c98f4';
+import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=36c98f4';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -19,7 +19,8 @@ let host = null;
 
 // `h`: { mountTree(el, space, { parent, open }), noteMenu(id), deleteNotes(ids), folders() (of the
 // current space), reveal({ kind: 'branch', id, repo }), gitChanged(repo), preview(id) (a page's first
-// picture and the start of its text), peek(id, mode) (opens a note in a side or center peek), showMenu,
+// picture and the start of its text), peek(id, mode) (opens a note in a side or center peek),
+// homeItems(database, view) (the menu items that show a view on the project's dashboard), showMenu,
 // modal, confirmBox, toast }.
 export function initViews(h) {
   host = h;
@@ -66,7 +67,7 @@ const pictures = list => [...(list || [])].filter(f => f.type.startsWith('image/
 
 // The gallery a paste goes to: the view under the pointer, or else the one clicked last, if a gallery.
 function galleryTarget() {
-  const isGallery = x => x?.el.isConnected && x.el.getClientRects().length && activeView(S.getCollection(S.collectionKey(x.space, x.parent)))?.type === 'gallery';
+  const isGallery = x => x?.el.isConnected && x.el.getClientRects().length && activeView(S.getCollection(S.collectionKey(x.space, x.parent)), x)?.type === 'gallery';
   const hovered = [...mounted].filter(x => x.el.matches(':hover'));
   // (the innermost one, for a gallery shown in an item of another)
   const under = hovered.find(x => !hovered.some(y => y !== x && x.el.contains(y.el)));
@@ -98,7 +99,9 @@ export const VIEW_KINDS = ['table', 'board', 'list', 'gallery', 'canvas']; // th
 export const viewName = type => VIEWS[type][0];
 const COLOR_NAMES = { gray: 'Gray', brown: 'Brown', orange: 'Orange', yellow: 'Yellow', green: 'Green', blue: 'Blue', purple: 'Purple', pink: 'Pink', red: 'Red' };
 const hasOptions = p => p.type === 'select' || p.type === 'multi';
-const activeView = col => col.views.find(v => v.id === col.active) || col.views[0];
+// The view a collection shows: the one it is pinned to (`c.pin`, the dashboard home's), else the
+// database's active one.
+const activeView = (col, c = null) => (c?.pin && col.views.find(v => v.id === c.pin)) || col.views.find(v => v.id === col.active) || col.views[0];
 const propOf = (key, id) => S.getCollection(key).schema.find(p => p.id === id) || null;
 
 // While a value or a title is being typed, repaints wait (they would throw the input away).
@@ -572,8 +575,10 @@ function bindProps(b) {
 
 const mounted = new Set(); // { el, space, parent, ctx, open(id, event), create(props, open), dirty }
 
-// `opts`: { space, parent (the database), ctx ('inline' in a page's text, or 'page' on its own),
-// open(id, event), create(props, open) -> note }.
+// `opts`: { space, parent (the database), ctx ('inline' in a page's text, 'page' on its own, or
+// 'home' on a dashboard), pin (a view to show alone, the dashboard home's: no other tabs, and
+// choosing it doesn't change the view the database shows elsewhere), open(id, event),
+// create(props, open) -> note }.
 export function renderCollection(el, opts) {
   let c = [...mounted].find(x => x.el === el);
   if (!c) {
@@ -653,7 +658,7 @@ function paint(c) {
   // (and while something is dragged on a canvas)
   if (editing(c.el) || c.canvas?.busy) { c.dirty = true; return; }
   c.dirty = false;
-  const key = S.collectionKey(c.space, c.parent), col = S.getCollection(key), view = activeView(col);
+  const key = S.collectionKey(c.space, c.parent), col = S.getCollection(key), view = activeView(col, c);
   const notes = S.childrenOf(c.space, c.parent);
   // (a card in edit mode that isn't on the board anymore: gone, or another view shown)
   if (c.editCard && (view.type !== 'board' || !notes.some(n => n.id === c.editCard))) endEdit(c);
@@ -669,8 +674,8 @@ function paint(c) {
   const drag = c.focused ? 'data-tauri-drag-region' : '';
   c.el.innerHTML = `<div class="cv cv-${c.ctx}">
     <div class="cv-bar" ${drag}>
-      <div class="cv-tabs" ${drag}>${col.views.map(v => `<button class="cv-tab ${v === view ? 'on' : ''}" data-view="${v.id}">${icon(v.icon || VIEWS[v.type]?.[1] || 'table')}<span>${esc(v.name)}</span></button>`).join('')}
-        <button class="cv-btn" data-cv="add-view" title="Add a view">${icon('plus')}</button></div>
+      <div class="cv-tabs" ${drag}>${(c.pin ? [view] : col.views).map(v => `<button class="cv-tab ${v === view ? 'on' : ''}" data-view="${v.id}">${icon(v.icon || VIEWS[v.type]?.[1] || 'table')}<span>${esc(v.name)}</span></button>`).join('')}
+        ${c.pin ? '' : `<button class="cv-btn" data-cv="add-view" title="Add a view">${icon('plus')}</button>`}</div>
       <span class="spacer" ${drag}></span>
       <button class="cv-btn" data-cv="focus-mode" title="${c.focused ? `Leave the focus mode (Esc${desktop ? ' or F11' : ''})` : `Focus mode: the view takes the whole window${desktop ? ' (F11)' : ''}`}">${icon(c.focused ? 'unfocus' : 'focus')}</button>
       ${c.ctx === 'page' && !c.focused ? `<button class="cv-btn" data-cv="focus" title="${focusedDb(c.parent) ? 'Show the title again' : 'Full screen: hide the icon and the title, so the views take the page'}">${icon(focusedDb(c.parent) ? 'shrink' : 'expand')}</button>` : ''}
@@ -1002,7 +1007,7 @@ function endEdit(c) {
 // Draws one card of a board again (in edit mode or not), the rest of it as it is.
 function paintCard(c, id) {
   const el = cardOf(c, id), n = S.getNote(id);
-  const col = S.getCollection(S.collectionKey(c.space, c.parent)), view = activeView(col), g = groupProp(col, view);
+  const col = S.getCollection(S.collectionKey(c.space, c.parent)), view = activeView(col, c), g = groupProp(col, view);
   if (!el || !n || !g || view.type !== 'board' || c.dirty || editing(c.el)) return paint(c);
   el.outerHTML = cardHtml(n, shownOf(col, view, g), view, c.editCard === id);
   if (view.stretch || PREVIEWS[view.preview]) fillSnippets(c, [n], view.preview === 'large');
@@ -1120,7 +1125,7 @@ function boardHtml(col, view, notes, editId = null) {
 
 // The notes of a pinned group, in a list to open them.
 function pinnedPopup(anchor, c, groupId) {
-  const key = S.collectionKey(c.space, c.parent), col = S.getCollection(key), g = groupProp(col, activeView(col));
+  const key = S.collectionKey(c.space, c.parent), col = S.getCollection(key), g = groupProp(col, activeView(col, c));
   const known = new Set(g.options.map(o => o.id));
   const notes = S.childrenOf(c.space, c.parent).filter(n => (groupId ? n.props?.[g.id] === groupId : !known.has(n.props?.[g.id])));
   const el = popup(anchor, 'Search in this group');
@@ -1174,7 +1179,7 @@ export function addView(key, type) {
 function viewMenu(x, y, key, c) {
   const ctx = c.ctx;
   const page = S.getNote(S.getNote(key)?.parent);
-  const col = S.getCollection(key), view = activeView(col);
+  const col = S.getCollection(key), view = activeView(col, c);
   const selects = col.schema.filter(p => p.type === 'select');
   const g = view.type === 'board' ? groupProp(col, view) : null;
   host.showMenu(x, y, [
@@ -1199,6 +1204,8 @@ function viewMenu(x, y, key, c) {
       { label: 'Open items in focus mode', items: () => Object.entries(FOCUS_OPEN).map(([m, name]) => ({ label: `${name}${focusOpenOf(key) === m ? '  ✓' : ''}`, run: () => S.setFocusOpen(key, m) })) },
     ] : []),
     { label: c.focused ? 'Leave the focus mode  (Esc)' : `Focus mode${desktop ? '  (F11)' : ''}`, run: () => setFocused(c, !c.focused) },
+    // (this view alone on the project's dashboard)
+    ...(S.isDatabase(key) ? host.homeItems(key, view.id) : []),
     ...(view.type === 'board' && view.pinned?.length ? [{ label: 'Unpin all groups', run: () => S.updateView(key, view.id, { pinned: null }) }] : []),
     // a database in a page's text can take the page's whole width (the text keeps its column)
     ...(ctx === 'inline' && page ? [{ label: `Full-width databases on this page${S.wideViewsOf(page.id) ? '  ✓' : ''}`, run: () => S.setWideViews(page.id, !S.wideViewsOf(page.id)) }] : []),
@@ -1225,9 +1232,9 @@ function bindCollection(c) {
     // (a card in edit mode doesn't open: its parts are edited as the button goes down, below)
     if (e.target.closest('.bd-editing')) return;
     if (openBranchChip(e)) return;
-    const key = keyOf(), col = S.getCollection(key), view = activeView(col);
+    const key = keyOf(), col = S.getCollection(key), view = activeView(col, c);
     const tab = e.target.closest('.cv-tab');
-    if (tab) return S.setActiveView(key, tab.dataset.view);
+    if (tab) return c.pin || S.setActiveView(key, tab.dataset.view);
     const btn = e.target.closest('[data-cv]'), r = btn?.getBoundingClientRect();
     const id = e.target.closest('[data-note]')?.dataset.note;
     const colEl = e.target.closest('.bd-col');
@@ -1336,7 +1343,7 @@ function bindCollection(c) {
     if (!tab && !item) return;
     e.preventDefault();
     if (tab) {
-      S.setActiveView(keyOf(), tab.dataset.view);
+      if (!c.pin) S.setActiveView(keyOf(), tab.dataset.view);
       return viewMenu(e.clientX, e.clientY, keyOf(), c);
     }
     if (c.sel.has(item.dataset.note) && c.sel.size > 1) return bulkMenu(c, e.clientX, e.clientY);
@@ -1390,7 +1397,7 @@ function bindCollection(c) {
     const t = target(e);
     if (!t) return;
     e.preventDefault();
-    const key = keyOf(), col = S.getCollection(key), g = groupProp(col, activeView(col));
+    const key = keyOf(), col = S.getCollection(key), g = groupProp(col, activeView(col, c));
     const ids = dragging;
     drag = null; // the board is drawn again, so "dragend" won't reach it
     dragging = [];
@@ -1505,7 +1512,7 @@ function bindCollection(c) {
     const t = colTarget(e);
     if (!t) return;
     e.preventDefault();
-    const key = keyOf(), col = S.getCollection(key), g = groupProp(col, activeView(col));
+    const key = keyOf(), col = S.getCollection(key), g = groupProp(col, activeView(col, c));
     const moving = dragCol;
     dragCol = null; // the board is drawn again, so "dragend" won't reach it
     // dropped on the right half: before the option that follows the target
@@ -1525,7 +1532,7 @@ function bindCollection(c) {
 // Only the bar's "New" opens it, like a click: from a column or the table's last row, its title is
 // typed right there.
 function newMenu(c, btn, x, y) {
-  const key = S.collectionKey(c.space, c.parent), col = S.getCollection(key), view = activeView(col);
+  const key = S.collectionKey(c.space, c.parent), col = S.getCollection(key), view = activeView(col, c);
   const g = view.type === 'board' ? groupProp(col, view) : null;
   const colEl = btn.closest('.bd-col');
   const group = colEl ? colEl.dataset.group || null : btn.dataset.cv === 'new' ? g?.options[0]?.id ?? null : null;
@@ -1567,7 +1574,7 @@ function typeTitle(c, n) {
 
 // A new item right after `id`, in its column on a board.
 function addBelow(c, id) {
-  const key = S.collectionKey(c.space, c.parent), col = S.getCollection(key), view = activeView(col);
+  const key = S.collectionKey(c.space, c.parent), col = S.getCollection(key), view = activeView(col, c);
   const g = view.type === 'board' ? groupProp(col, view) : null, group = g && S.getNote(id)?.props?.[g.id];
   const siblings = S.childrenOf(c.space, c.parent);
   const next = siblings[siblings.findIndex(s => s.id === id) + 1]?.id ?? null;
