@@ -5,17 +5,17 @@
 // below as it was. Pages nest in other pages through their text (a link to the nested page, or a
 // database block); databases show in the tree as one item. Tabs and spaces belong to app.js (see
 // initNotesUi); the table, board and canvas views and the properties are in views.js (and canvas.js).
-import * as S from './notes-store.js?v=32fb420';
-import * as G from './git.js?v=32fb420';
-import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=32fb420';
-import { openImageViewer, copyImage } from './image-viewer.js?v=32fb420';
-import { pickEmoji } from './emoji.js?v=32fb420';
-import { toMarkdown } from './markdown.js?v=32fb420';
-import { sharedPath, getProject, homeOf, setHome, homeHeightOf, setHomeHeight } from './projects.js?v=32fb420';
-import { initViews, renderCollection, renderProps, repaintViews, repaintItem, valueText, createBranchFor, addView, focusedDb, VIEW_KINDS, viewName } from './views.js?v=32fb420';
-import { importNotion } from './notion-import.js?v=32fb420';
-import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative, fmtSize } from './util.js?v=32fb420';
-import { desktop, invoke, isMobile } from './platform.js?v=32fb420';
+import * as S from './notes-store.js?v=424f39f';
+import * as G from './git.js?v=424f39f';
+import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=424f39f';
+import { openImageViewer, copyImage } from './image-viewer.js?v=424f39f';
+import { pickEmoji } from './emoji.js?v=424f39f';
+import { toMarkdown } from './markdown.js?v=424f39f';
+import { sharedPath, getProject, homeOf, setHome, homeHeightOf, setHomeHeight } from './projects.js?v=424f39f';
+import { initViews, renderCollection, renderProps, repaintViews, repaintItem, valueText, createBranchFor, addView, focusedDb, VIEW_KINDS, viewName } from './views.js?v=424f39f';
+import { importNotion } from './notion-import.js?v=424f39f';
+import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative, fmtSize } from './util.js?v=424f39f';
+import { desktop, invoke, isMobile } from './platform.js?v=424f39f';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -444,9 +444,11 @@ export async function exportSpace(space = host.space()) {
 async function importFromNotion(space, parent) {
   let path, picked;
   try {
-    if (desktop) path = await tauri.dialog.open({ title: 'Import a Notion export', multiple: false, directory: false, filters: [{ name: 'Notion export (Markdown & CSV)', extensions: ['zip'] }] });
+    // No file type filter: macOS greys out Notion's .zip exports with one (the import itself tells
+    // a file that isn't a zip archive).
+    if (desktop) path = await tauri.dialog.open({ title: 'Import a Notion export (.zip)', multiple: false, directory: false });
     else {
-      const input = Object.assign(document.createElement('input'), { type: 'file', accept: '.zip,application/zip' });
+      const input = Object.assign(document.createElement('input'), { type: 'file' });
       picked = await new Promise(done => { input.onchange = () => done(input.files[0]); input.click(); });
     }
   } catch (e) {
