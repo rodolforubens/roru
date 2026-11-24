@@ -1,20 +1,20 @@
-import * as G from './git.js?v=424f39f';
-import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=424f39f';
-import { renderDiff, renderSubmodule, parseSubmoduleLog, loadSizes } from './diff.js?v=424f39f';
-import { loadMedia } from './media-diff.js?v=424f39f';
-import { partialPatch } from './patch.js?v=424f39f';
-import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=424f39f';
-import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=424f39f';
-import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=424f39f';
-import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=424f39f';
-import * as P from './projects.js?v=424f39f';
-import { syncStatus, onSyncStatus } from './mirror.js?v=424f39f';
-import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=424f39f';
-import * as S from './notes-store.js?v=424f39f';
-import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=424f39f';
-import * as M from './mobile.js?v=424f39f';
-import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=424f39f';
-import { initNotesUi, mountNoteTab, leaveNoteTab, releasePages, renderHomeNote, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, databaseKinds, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=424f39f';
+import * as G from './git.js?v=e6ec752';
+import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=e6ec752';
+import { renderDiff, renderSubmodule, parseSubmoduleLog, loadSizes } from './diff.js?v=e6ec752';
+import { loadMedia } from './media-diff.js?v=e6ec752';
+import { partialPatch } from './patch.js?v=e6ec752';
+import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=e6ec752';
+import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=e6ec752';
+import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=e6ec752';
+import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=e6ec752';
+import * as P from './projects.js?v=e6ec752';
+import { syncStatus, onSyncStatus } from './mirror.js?v=e6ec752';
+import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=e6ec752';
+import * as S from './notes-store.js?v=e6ec752';
+import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=e6ec752';
+import * as M from './mobile.js?v=e6ec752';
+import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=e6ec752';
+import { initNotesUi, mountNoteTab, leaveNoteTab, releasePages, renderHomeNote, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, databaseKinds, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=e6ec752';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -2046,6 +2046,9 @@ function renderSignIn() {
   if (configured) $('#w-signin').onclick = startSignIn;
 }
 
+// What a project of the start page's lists holds: its folders and its notes (out of the trash).
+const projectCounts = p => `${plural(p.folders.length, 'folder')} · <span data-note-count="${esc(p.id)}">${plural(S.notesOf(p.id).length, 'note')}</span>`;
+
 function renderWelcome() {
   if (!desktop && !currentUser()) return renderSignIn();
   if (isMobile()) {
@@ -2061,9 +2064,9 @@ function renderWelcome() {
     <div class="welcome-acts">${desktop ? '<button class="btn primary" id="w-open">Open repository or folder…</button>' : ''}<button class="btn ${desktop ? '' : 'primary'}" id="w-project">New project…</button></div>
     <div class="welcome-notes"></div>
     ${projects.length ? `<div class="recent"><h4>Projects</h4>${projects.map(p => `<div class="recent-item proj-item" data-project="${esc(p.id)}">
-      <span class="proj-badge" style="--pc: ${p.color}">${esc(P.initials(p.name))}</span><span class="proj-text"><b>${esc(p.name)}</b><span class="p">${plural(p.folders.length, 'folder')}</span></span></div>`).join('')}</div>` : ''}
+      <span class="proj-badge" style="--pc: ${p.color}">${esc(P.initials(p.name))}</span><span class="proj-text"><b>${esc(p.name)}</b><span class="p">${projectCounts(p)}</span></span></div>`).join('')}</div>` : ''}
     ${archived.length ? `<div class="recent archived"><h4>Archived projects</h4>${archived.map(p => `<div class="recent-item proj-item arch-item" data-archived="${esc(p.id)}">
-      <span class="proj-badge" style="--pc: ${p.color}">${esc(P.initials(p.name))}</span><span class="proj-text"><b>${esc(p.name)}</b><span class="p">${plural(p.folders.length, 'folder')} · archived ${esc(fmtRelative(p.archived / 1000))}</span></span>
+      <span class="proj-badge" style="--pc: ${p.color}">${esc(P.initials(p.name))}</span><span class="proj-text"><b>${esc(p.name)}</b><span class="p">${projectCounts(p)} · archived ${esc(fmtRelative(p.archived / 1000))}</span></span>
       <span class="spacer"></span><button class="btn-sm" data-arch="restore">Restore</button><button class="btn-sm" data-arch="delete">Delete…</button></div>`).join('')}</div>` : ''}
     ${recent.length ? `<div class="recent"><h4>Recent</h4><div class="recent-list">${recent.map(p => `<div class="recent-item" data-path="${esc(p)}"><b>${esc(folderName(p))}</b><span class="p">${esc(p)}</span></div>`).join('')}</div></div>` : ''}
   </div></div>`;
@@ -3686,6 +3689,8 @@ async function revealMention({ kind, id, repo }) {
 
 S.onNotesChange(() => {
   renderTabs();
+  // (the start page's projects count their notes, which come in after it shows)
+  document.querySelectorAll('.welcome [data-note-count]').forEach(el => (el.textContent = plural(S.notesOf(el.dataset.noteCount).length, 'note')));
   if (state.note) renderToolbar();
 });
 
