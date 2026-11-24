@@ -1,5 +1,5 @@
 // Thin layer over the `git` command exposed by the Rust backend.
-import { invoke } from './platform.js?v=56317d2';
+import { invoke } from './platform.js?v=32fb420';
 
 const US = '\x1f'; // field separator
 const RS = '\x1e'; // record separator
@@ -137,6 +137,28 @@ export async function getPathLog(repo, path, { limit = 100, follow = false } = {
     const [sha, author, email, time, subject] = rec.split(US);
     return { sha, author, email, time: +time, subject };
   });
+}
+
+// The messages of the last commits of the local branches (merges left out), newest first and
+// without repeats, the user's own (user.email) before the others': the history the commit box
+// goes through with the arrow keys.
+export async function getRecentMessages(repo, limit = 200) {
+  const [log, me] = await Promise.all([
+    gitRaw(repo, ['log', 'HEAD', '--branches', '--no-merges', '--date-order', '-n', String(limit), '--format=%ae%x1f%B%x1e']),
+    gitRaw(repo, ['config', '--get', 'user.email']),
+  ]);
+  if (log.code !== 0) return []; // repository without commits
+  const email = me.code === 0 ? me.stdout.trim().toLowerCase() : '';
+  const seen = new Set(), own = [], others = [];
+  for (const rec of log.stdout.split(RS)) {
+    const at = rec.indexOf(US);
+    if (at < 0) continue;
+    const message = rec.slice(at + 1).replace(/\r\n/g, '\n').trim();
+    if (!message || seen.has(message)) continue;
+    seen.add(message);
+    (email && rec.slice(0, at).trim().toLowerCase() === email ? own : others).push(message);
+  }
+  return [...own, ...others];
 }
 
 // The commit that last changed each line of the working copy of a file:

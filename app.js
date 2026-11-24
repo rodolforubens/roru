@@ -1,20 +1,20 @@
-import * as G from './git.js?v=56317d2';
-import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=56317d2';
-import { renderDiff, renderSubmodule, parseSubmoduleLog, loadSizes } from './diff.js?v=56317d2';
-import { loadMedia } from './media-diff.js?v=56317d2';
-import { partialPatch } from './patch.js?v=56317d2';
-import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=56317d2';
-import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=56317d2';
-import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=56317d2';
-import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=56317d2';
-import * as P from './projects.js?v=56317d2';
-import { syncStatus, onSyncStatus } from './mirror.js?v=56317d2';
-import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=56317d2';
-import * as S from './notes-store.js?v=56317d2';
-import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=56317d2';
-import * as M from './mobile.js?v=56317d2';
-import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=56317d2';
-import { initNotesUi, mountNoteTab, leaveNoteTab, releasePages, renderHomeNote, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, databaseKinds, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=56317d2';
+import * as G from './git.js?v=32fb420';
+import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=32fb420';
+import { renderDiff, renderSubmodule, parseSubmoduleLog, loadSizes } from './diff.js?v=32fb420';
+import { loadMedia } from './media-diff.js?v=32fb420';
+import { partialPatch } from './patch.js?v=32fb420';
+import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=32fb420';
+import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural } from './util.js?v=32fb420';
+import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=32fb420';
+import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=32fb420';
+import * as P from './projects.js?v=32fb420';
+import { syncStatus, onSyncStatus } from './mirror.js?v=32fb420';
+import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=32fb420';
+import * as S from './notes-store.js?v=32fb420';
+import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=32fb420';
+import * as M from './mobile.js?v=32fb420';
+import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=32fb420';
+import { initNotesUi, mountNoteTab, leaveNoteTab, releasePages, renderHomeNote, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, databaseKinds, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=32fb420';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -2446,7 +2446,7 @@ function renderChanges() {
         </section>
         <div class="splitter h" data-split="commit-box-h" data-min="90" data-target="next"></div>
         <div class="commit-box">
-          <textarea id="commit-msg" placeholder="Commit message  (Ctrl+Enter to commit)" spellcheck="false"></textarea>
+          <textarea id="commit-msg" placeholder="${COMMIT_HINT}" spellcheck="false"></textarea>
           <div class="commit-actions">
             <label><input type="checkbox" id="amend"> Amend</label>
             <label class="check toggle auto-push" title="Push right after each commit (remembered for this repository)"><input type="checkbox" id="auto-push"><span class="switch"></span> Auto push</label>
@@ -2569,6 +2569,8 @@ function statusBadge(f) {
   return `<span class="st st-${esc(f.status)}">${esc(f.status === '?' ? 'A' : f.status)}</span>`;
 }
 
+const COMMIT_HINT = 'Commit message  (Ctrl+Enter to commit, ↑ for recent ones)';
+
 function updateCommitButton() {
   const btn = $('#commit-btn');
   if (!btn || committing) return; // keep the "Committing…" state until the commit finishes
@@ -2577,7 +2579,7 @@ function updateCommitButton() {
   // A rebase, cherry-pick or revert is continued instead, keeping the replayed commit's message.
   const replaying = !!op && op !== 'merge';
   msg.disabled = replaying;
-  msg.placeholder = replaying ? `Continuing the ${op} keeps the original commit message` : 'Commit message  (Ctrl+Enter to commit)';
+  msg.placeholder = replaying ? `Continuing the ${op} keeps the original commit message` : COMMIT_HINT;
   amend.disabled = !!op;
   if (op && amend.checked) amend.checked = state.amend = false;
   const hasMsg = msg.value.trim().length > 0;
@@ -2592,6 +2594,48 @@ function updateCommitButton() {
     btn.textContent = amend.checked ? 'Amend' : n ? `Commit (${n})` : 'Commit';
   }
   btn.title = s.conflicts.length ? 'Resolve every conflict first' : '';
+}
+
+// The commit box's history, like a terminal's: in an empty box, Up brings back the message of the
+// last commit (G.getRecentMessages: the user's own first) and each Up an older one, while Down goes
+// back toward the newest and then the empty box. The arrows do it while the box holds the recalled
+// message untouched and the caret is on its first line (Up) or its last (Down), so they still move
+// through its lines; typing keeps the message and ends it, and Escape empties the box again.
+let recall = null; // { repo, list (a promise), index (-1: the empty box), shown (the box's text) }
+
+const recalling = msg => recall?.repo === state.repo && msg.value === recall.shown;
+
+// Steps through the history (1: older, -1: newer); false when the key should do what it always does.
+function recallMessage(msg, step) {
+  if (msg.disabled) return false;
+  const text = msg.value;
+  if (recalling(msg)) {
+    const around = step > 0 ? text.slice(0, msg.selectionStart) : text.slice(msg.selectionEnd);
+    if (around.includes('\n')) return false; // not on the first (last) line: move the caret
+  } else {
+    if (step < 0 || text) return false;
+    recall = { repo: state.repo, list: G.getRecentMessages(state.repo).catch(() => []), index: -1, shown: '' };
+  }
+  const r = recall;
+  r.list.then(list => {
+    if (recall !== r || !msg.isConnected || !recalling(msg)) return; // typed meanwhile, or another tab
+    const index = Math.max(-1, Math.min(list.length - 1, r.index + step));
+    if (index === r.index) return;
+    r.index = index;
+    showRecalled(msg, (r.shown = index < 0 ? '' : list[index]), step);
+    if (index < 0) recall = null;
+  });
+  return true;
+}
+
+// The caret goes to the end of the first line when going back, so the next Up goes on to an older
+// message, and to the end when coming forward, so the next Down goes on to a newer one.
+function showRecalled(msg, text, step) {
+  setCommitMsg(text);
+  const caret = step > 0 && text.includes('\n') ? text.indexOf('\n') : text.length;
+  msg.setSelectionRange(caret, caret);
+  msg.scrollTop = step > 0 ? 0 : msg.scrollHeight;
+  updateCommitButton();
 }
 
 function bindChangesEvents(root) {
@@ -2718,9 +2762,18 @@ function bindChangesEvents(root) {
   });
 
   const msg = $('#commit-msg', root);
-  msg.addEventListener('input', () => { state.commitMsg = msg.value; updateCommitButton(); });
+  msg.addEventListener('input', () => { recall = null; state.commitMsg = msg.value; updateCommitButton(); });
   msg.addEventListener('keydown', e => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); commit(); }
+    else if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.isComposing) return;
+    else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      if (recallMessage(msg, e.key === 'ArrowUp' ? 1 : -1)) e.preventDefault();
+    }
+    else if (e.key === 'Escape' && recalling(msg) && recall.index >= 0) {
+      e.preventDefault();
+      showRecalled(msg, '', -1);
+      recall = null;
+    }
   });
   $('#amend', root).addEventListener('change', async e => {
     state.amend = e.target.checked;
