@@ -5,17 +5,17 @@
 // below as it was. Pages nest in other pages through their text (a link to the nested page, or a
 // database block); databases show in the tree as one item. Tabs and spaces belong to app.js (see
 // initNotesUi); the table, board and canvas views and the properties are in views.js (and canvas.js).
-import * as S from './notes-store.js?v=bebebcf';
-import * as G from './git.js?v=bebebcf';
-import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=bebebcf';
-import { openImageViewer, copyImage } from './image-viewer.js?v=bebebcf';
-import { pickEmoji } from './emoji.js?v=bebebcf';
-import { toMarkdown } from './markdown.js?v=bebebcf';
-import { sharedPath, getProject, homeOf, setHome, homeHeightOf, setHomeHeight } from './projects.js?v=bebebcf';
-import { initViews, renderCollection, renderProps, repaintViews, repaintItem, valueText, createBranchFor, addView, focusedDb, VIEW_KINDS, viewName } from './views.js?v=bebebcf';
-import { importNotion } from './notion-import.js?v=bebebcf';
-import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative, fmtSize } from './util.js?v=bebebcf';
-import { desktop, invoke, isMobile } from './platform.js?v=bebebcf';
+import * as S from './notes-store.js?v=7efb936';
+import * as G from './git.js?v=7efb936';
+import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=7efb936';
+import { openImageViewer, copyImage } from './image-viewer.js?v=7efb936';
+import { pickEmoji } from './emoji.js?v=7efb936';
+import { toMarkdown } from './markdown.js?v=7efb936';
+import { sharedPath, getProject, homeOf, setHome, homeHeightOf, setHomeHeight } from './projects.js?v=7efb936';
+import { initViews, renderCollection, renderProps, repaintViews, repaintItem, valueText, createBranchFor, addView, focusedDb, VIEW_KINDS, viewName } from './views.js?v=7efb936';
+import { importNotion } from './notion-import.js?v=7efb936';
+import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative, fmtSize } from './util.js?v=7efb936';
+import { desktop, invoke, isMobile } from './platform.js?v=7efb936';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;

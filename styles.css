@@ -204,11 +204,14 @@ html.mac #tabs { padding-left: 76px; }
 .tab:hover .tab-x, .tab.active .tab-x { visibility: visible; }
 .tab-x:hover { background: var(--bg-3); color: var(--text); }
 .tab.dragging { opacity: .45; }
-.tab.drop-before::before, .tab.drop-after::after {
+/* a tab reaches the window's top edge (the space over it is the tab's too), so the pointer thrown
+   against the top of a maximized window still lands on it */
+.tab::after { content: ""; position: absolute; left: -1px; right: -1px; top: -7px; height: 7px; }
+.tab.drop-before::before, .tab.drop-after::before {
   content: ""; position: absolute; top: 4px; bottom: 4px; width: 2px; border-radius: 1px; background: var(--accent);
 }
 .tab.drop-before::before { left: -2px; }
-.tab.drop-after::after { right: -2px; }
+.tab.drop-after::before { right: -2px; }
 .tab-new {
   display: grid; place-items: center; width: 28px; height: 28px; margin: 0 0 2px 4px; padding: 0; flex: none;
   border: none; border-radius: 7px; background: none; color: var(--text-2); cursor: pointer;

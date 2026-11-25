@@ -32,11 +32,11 @@
 // A deleted note goes to the trash with what is inside it: it gets `trashed` (when), and it and the
 // notes inside it leave every list (getNote, childrenOf…) until it is restored or deleted for good
 // (see "The trash" below).
-import { desktop, invoke, convertFileSrc } from './platform.js?v=bebebcf';
-import { db, currentUser } from './account.js?v=bebebcf';
-import { createMirror, clone, reportStatus } from './mirror.js?v=bebebcf';
-import { Y, updateYFragment, yDocToProsemirrorJSON } from './vendor/tiptap.js?v=bebebcf';
-import { noteSchema, fitToSchema } from './editor.js?v=bebebcf';
+import { desktop, invoke, convertFileSrc } from './platform.js?v=7efb936';
+import { db, currentUser } from './account.js?v=7efb936';
+import { createMirror, clone, reportStatus } from './mirror.js?v=7efb936';
+import { Y, updateYFragment, yDocToProsemirrorJSON } from './vendor/tiptap.js?v=7efb936';
+import { noteSchema, fitToSchema } from './editor.js?v=7efb936';
 
 const SAVE_DELAY = 300; // ms after the last edit (files on this computer)
 
