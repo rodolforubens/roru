@@ -4,13 +4,13 @@
 // anywhere, see canvas.js). Also the properties
 // block of an item's page, which shares the value editors with the table.
 // A Branch property links a note to a branch of one of the space's repositories (notes as tasks).
-import * as S from './notes-store.js?v=e6ec752';
-import * as G from './git.js?v=e6ec752';
-import { esc, icon, folderName, store } from './util.js?v=e6ec752';
-import { desktop } from './platform.js?v=e6ec752';
-import { localPath, sharedPath } from './projects.js?v=e6ec752';
-import { pickEmoji } from './emoji.js?v=e6ec752';
-import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=e6ec752';
+import * as S from './notes-store.js?v=ba3a7a9';
+import * as G from './git.js?v=ba3a7a9';
+import { esc, icon, folderName, store } from './util.js?v=ba3a7a9';
+import { desktop } from './platform.js?v=ba3a7a9';
+import { localPath, sharedPath } from './projects.js?v=ba3a7a9';
+import { pickEmoji } from './emoji.js?v=ba3a7a9';
+import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=ba3a7a9';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -107,7 +107,7 @@ const propOf = (key, id) => S.getCollection(key).schema.find(p => p.id === id) |
 // While a value or a title is being typed, repaints wait (they would throw the input away).
 const editing = el => {
   const a = document.activeElement;
-  return !!a && el.contains(a) && a.matches('input:not([data-done]), textarea');
+  return !!a && el.contains(a) && a.matches('input:not([data-done]):not(.cv-q), textarea');
 };
 
 // An input that edits a value in place: Enter or a click elsewhere saves, Escape cancels.
@@ -659,7 +659,11 @@ function paint(c) {
   if (editing(c.el) || c.canvas?.busy) { c.dirty = true; return; }
   c.dirty = false;
   const key = S.collectionKey(c.space, c.parent), col = S.getCollection(key), view = activeView(col, c);
-  const notes = S.childrenOf(c.space, c.parent);
+  const items = S.childrenOf(c.space, c.parent);
+  // (a canvas keeps every item, the ones the search doesn't find dimmed: see dimCanvas)
+  const notes = view.type === 'canvas' ? items : found(c, items, col.schema);
+  // the search box keeps its focus and caret as the view is drawn again
+  const q = $('.cv-q', c.el), typing = q && q === document.activeElement ? [q.selectionStart, q.selectionEnd] : null;
   // (a card in edit mode that isn't on the board anymore: gone, or another view shown)
   if (c.editCard && (view.type !== 'board' || !notes.some(n => n.id === c.editCard))) endEdit(c);
   // drawing again keeps where the board, the table and the view tabs were scrolled to (a card
@@ -677,6 +681,8 @@ function paint(c) {
       <div class="cv-tabs" ${drag}>${(c.pin ? [view] : col.views).map(v => `<button class="cv-tab ${v === view ? 'on' : ''}" data-view="${v.id}">${icon(v.icon || VIEWS[v.type]?.[1] || 'table')}<span>${esc(v.name)}</span></button>`).join('')}
         ${c.pin ? '' : `<button class="cv-btn" data-cv="add-view" title="Add a view">${icon('plus')}</button>`}</div>
       <span class="spacer" ${drag}></span>
+      ${c.searching ? `<label class="cv-search">${icon('search')}<input type="search" class="cv-q" placeholder="Search the items" spellcheck="false" value="${esc(c.q || '')}"><button class="cv-btn" data-cv="search-close" title="Close the search (Esc)">${icon('close')}</button></label>`
+        : `<button class="cv-btn" data-cv="search" title="Search the items: their titles, properties and text">${icon('search')}</button>`}
       <button class="cv-btn" data-cv="focus-mode" title="${c.focused ? `Leave the focus mode (Esc${desktop ? ' or F11' : ''})` : `Focus mode: the view takes the whole window${desktop ? ' (F11)' : ''}`}">${icon(c.focused ? 'unfocus' : 'focus')}</button>
       ${c.ctx === 'page' && !c.focused ? `<button class="cv-btn" data-cv="focus" title="${focusedDb(c.parent) ? 'Show the title again' : 'Full screen: hide the icon and the title, so the views take the page'}">${icon(focusedDb(c.parent) ? 'shrink' : 'expand')}</button>` : ''}
       <button class="cv-btn" data-cv="view-menu" title="View options">${icon('more')}</button>
@@ -691,12 +697,13 @@ function paint(c) {
   } else if (view.type === 'list') {
     // (with a "New" at its end, like the table's: the item's title is typed in its row)
     body.innerHTML = `<div class="cv-tree"></div><button class="vt-new" data-cv="new-row">${icon('plus')}New</button>`;
-    if (notes.length || c.ctx === 'panel') host.mountTree($('.cv-tree', body), c.space, { parent: c.parent, open: c.open });
-    else $('.cv-tree', body).innerHTML = '<div class="cv-empty">No items yet</div>';
+    if (notes.length || c.ctx === 'panel') host.mountTree($('.cv-tree', body), c.space, { parent: c.parent, open: c.open, only: searched(c) ? new Set(notes.map(n => n.id)) : null });
+    else $('.cv-tree', body).innerHTML = `<div class="cv-empty">${items.length ? 'No items found' : 'No items yet'}</div>`;
   } else if (view.type === 'table') {
     body.innerHTML = tableHtml(col, view, notes);
   } else if (view.type === 'canvas') {
     mountCanvas(body, c, { key, view, items: notes, host, repaint: () => paint(c), focus: focused });
+    dimCanvas(c, body, items, col.schema);
   } else if (view.type === 'gallery') {
     body.innerHTML = galleryHtml(view, notes);
     fillGallery(c, notes);
@@ -705,14 +712,80 @@ function paint(c) {
     if (view.stretch || PREVIEWS[view.preview]) fillSnippets(c, notes, view.preview === 'large');
     if (view.stretch) showGaps(c);
   }
+  // (a table, board or gallery the search left empty says so)
+  if (searched(c) && items.length && !notes.length && view.type !== 'list' && view.type !== 'canvas') body.insertAdjacentHTML('afterbegin', '<div class="cv-empty">No items found</div>');
   SCROLLERS.forEach((sel, i) => {
     const x = scrolled[i] && $(sel, c.el);
     if (x) [x.scrollLeft, x.scrollTop] = scrolled[i];
   });
+  if (typing) {
+    const box = $('.cv-q', c.el);
+    box?.focus({ preventScroll: true });
+    box?.setSelectionRange(...typing);
+  }
   // the selection keeps the notes that are still shown (a canvas has a selection of its own)
   const here = new Set(!known || view.type === 'list' || view.type === 'canvas' ? [] : notes.map(n => n.id));
   c.sel = new Set([...(c.sel || [])].filter(id => here.has(id)));
   paintSelection(c);
+}
+
+// ---------- search ----------
+
+// The search box of a view's bar (`c.q`, not kept): the items that have every word typed in their
+// title, their properties' values or their text, accents and case aside. The texts are read as
+// needed (`full` of host.preview), and the view is drawn again once they are.
+const texts = new Map(); // id -> { stamp, text }
+const reading = new Set();
+const plain = s => String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+const wordsOf = c => plain(c.q || '').split(/\s+/).filter(Boolean);
+const searched = c => !!(c.searching && wordsOf(c).length);
+
+function found(c, notes, schema) {
+  const words = searched(c) ? wordsOf(c) : [];
+  if (!words.length) return notes;
+  const wait = [];
+  const out = notes.filter(n => {
+    const meta = plain([n.title || '', ...schema.filter(p => p.type !== 'checkbox').flatMap(p => valueText(p, n.props?.[p.id]) ?? [])].join(' '));
+    const rest = words.filter(w => !meta.includes(w));
+    if (!rest.length) return true;
+    if (n.kind === 'database') return false;
+    const t = texts.get(n.id);
+    if (t?.stamp !== S.textStamp(n.id)) { wait.push(n.id); return false; }
+    return rest.every(w => t.text.includes(w));
+  });
+  readTexts(c, wait);
+  return out;
+}
+
+function readTexts(c, ids) {
+  ids = ids.filter(id => !reading.has(id));
+  if (!ids.length) return;
+  ids.forEach(id => reading.add(id));
+  Promise.all(ids.map(id => host.preview(id).then(p => texts.set(id, { stamp: p.updated, text: plain(p.full || '') }), () => {})))
+    .finally(() => {
+      ids.forEach(id => reading.delete(id));
+      if (searched(c) && c.el.isConnected) paint(c);
+    });
+}
+
+// A canvas keeps its items where they are: the copies of the ones the search doesn't find (and the
+// canvas's own elements) are dimmed.
+function dimCanvas(c, body, items, schema) {
+  if (!searched(c)) return;
+  const hits = new Set(found(c, items, schema).map(n => n.id));
+  body.querySelectorAll('.cvs-node').forEach(x => x.classList.toggle('cvs-miss', !hits.has(x.dataset.item)));
+}
+
+function openSearch(c) {
+  c.searching = true;
+  paint(c);
+  $('.cv-q', c.el)?.focus();
+}
+
+function closeSearch(c) {
+  c.searching = false;
+  c.q = '';
+  paint(c);
 }
 
 // ---------- selection ----------
@@ -1228,6 +1301,22 @@ function bindCollection(c) {
   const el = c.el;
   const keyOf = () => S.collectionKey(c.space, c.parent);
 
+  // the search box: the view follows what is typed; Escape empties it, then closes it
+  let searchTimer = 0;
+  el.addEventListener('input', e => {
+    if (!e.target.matches('.cv-q')) return;
+    c.q = e.target.value;
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => paint(c), 120);
+  });
+  el.addEventListener('keydown', e => {
+    if (!e.target.matches('.cv-q') || e.key !== 'Escape') return;
+    e.preventDefault();
+    e.stopPropagation();
+    clearTimeout(searchTimer);
+    if (c.q) { c.q = ''; paint(c); } else closeSearch(c);
+  });
+
   el.addEventListener('click', e => {
     // (a card in edit mode doesn't open: its parts are edited as the button goes down, below)
     if (e.target.closest('.bd-editing')) return;
@@ -1250,6 +1339,8 @@ function bindCollection(c) {
       case 'view-menu': return viewMenu(r.right - 220, r.bottom + 4, key, c);
       case 'focus': return toggleFocus(c);
       case 'focus-mode': return setFocused(c, !c.focused);
+      case 'search': return openSearch(c);
+      case 'search-close': return closeSearch(c);
       case 'new':
         if (view.type === 'table') return newRow(c);
         if (view.type === 'board') { const g = groupProp(col, view); return c.create(g?.options[0] ? { [g.id]: g.options[0].id } : {}); }

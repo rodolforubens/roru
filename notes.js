@@ -5,17 +5,17 @@
 // below as it was. Pages nest in other pages through their text (a link to the nested page, or a
 // database block); databases show in the tree as one item. Tabs and spaces belong to app.js (see
 // initNotesUi); the table, board and canvas views and the properties are in views.js (and canvas.js).
-import * as S from './notes-store.js?v=e6ec752';
-import * as G from './git.js?v=e6ec752';
-import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=e6ec752';
-import { openImageViewer, copyImage } from './image-viewer.js?v=e6ec752';
-import { pickEmoji } from './emoji.js?v=e6ec752';
-import { toMarkdown } from './markdown.js?v=e6ec752';
-import { sharedPath, getProject, homeOf, setHome, homeHeightOf, setHomeHeight } from './projects.js?v=e6ec752';
-import { initViews, renderCollection, renderProps, repaintViews, repaintItem, valueText, createBranchFor, addView, focusedDb, VIEW_KINDS, viewName } from './views.js?v=e6ec752';
-import { importNotion } from './notion-import.js?v=e6ec752';
-import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative, fmtSize } from './util.js?v=e6ec752';
-import { desktop, invoke, isMobile } from './platform.js?v=e6ec752';
+import * as S from './notes-store.js?v=ba3a7a9';
+import * as G from './git.js?v=ba3a7a9';
+import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=ba3a7a9';
+import { openImageViewer, copyImage } from './image-viewer.js?v=ba3a7a9';
+import { pickEmoji } from './emoji.js?v=ba3a7a9';
+import { toMarkdown } from './markdown.js?v=ba3a7a9';
+import { sharedPath, getProject, homeOf, setHome, homeHeightOf, setHomeHeight } from './projects.js?v=ba3a7a9';
+import { initViews, renderCollection, renderProps, repaintViews, repaintItem, valueText, createBranchFor, addView, focusedDb, VIEW_KINDS, viewName } from './views.js?v=ba3a7a9';
+import { importNotion } from './notion-import.js?v=ba3a7a9';
+import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative, fmtSize } from './util.js?v=ba3a7a9';
+import { desktop, invoke, isMobile } from './platform.js?v=ba3a7a9';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -1148,7 +1148,8 @@ function cardHtml(n) {
 }
 
 // The first picture of the note's text (or of a YouTube video shown as a card in it), how many pictures it has (`images`), and its start
-// as plain text. `lead`: that picture is what the text starts with (nothing but empty lines before it).
+// as plain text (`full`: all of it, for the views' search). `lead`: that picture is what the text starts
+// with (nothing but empty lines before it).
 async function previewOf(id) {
   const n = S.getNote(id);
   const stamp = S.textStamp(id); // (before reading: a change made meanwhile reads it again)
@@ -1170,7 +1171,7 @@ async function previewOf(id) {
   const start = first?.type === 'paragraph' ? first.content.find(x => x.type !== 'text' || x.text.trim()) : first;
   const lead = !!cover && (start?.type === 'image' || start?.type === 'embed');
   const text = parts.join('').replace(/\s+/g, ' ').trim();
-  const p = { updated: stamp, cover, images, lead, text: text.length > 220 ? `${text.slice(0, 219).trimEnd()}…` : text };
+  const p = { updated: stamp, cover, images, lead, text: text.length > 220 ? `${text.slice(0, 219).trimEnd()}…` : text, full: text };
   previews.set(id, p);
   return p;
 }
@@ -1228,10 +1229,11 @@ function paintTree(t) {
         <span class="nt-acts"><button class="nt-btn" data-nt="more" title="More">${icon('more')}</button><button class="nt-btn" data-nt="add" title="${db ? 'Add an item' : 'Add a page inside'}">${icon('plus')}</button></span>
       </div>${open ? kids.map(k => row(k, depth + 1)).join('') : ''}`;
   };
-  const top = S.childrenOf(t.space, t.parent ?? null);
+  // (`only`: the ids a list view's search found, see views.js)
+  const top = S.childrenOf(t.space, t.parent ?? null).filter(n => !t.only || t.only.has(n.id));
   t.el.innerHTML = (t.sidebar ? `<div class="nt-side-head">Notes<span class="spacer"></span>
       <button class="nt-btn" data-nt="new-db" title="New database">${icon('table')}</button><button class="nt-btn" data-nt="new" title="New page (Ctrl+N)">${icon('plus')}</button></div>` : '')
-    + (top.length ? top.map(n => row(n, 0)).join('') : `<div class="nt-empty">${t.parent ? 'No items yet' : 'No pages yet'}</div>`)
+    + (top.length ? top.map(n => row(n, 0)).join('') : `<div class="nt-empty">${t.only ? 'No items found' : t.parent ? 'No items yet' : 'No pages yet'}</div>`)
     + (t.sidebar ? `<button class="nt-trash" data-nt="trash">${icon('trash')}<span>Trash</span></button>` : '');
 }
 

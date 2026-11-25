@@ -1416,6 +1416,17 @@ body.note-page .git-side, body.note-page .ex-side, body:not(.note-page) .note-si
 .cv-btn .ic { width: 14px; height: 14px; }
 .cv-bar .btn-sm { display: inline-flex; align-items: center; gap: 5px; margin: 0; }
 .cv-empty { padding: 10px 6px; color: var(--text-3); font-size: 13px; }
+/* the search box of a view's bar (see "search" in views.js) */
+.cv-search {
+  display: flex; align-items: center; gap: 6px; flex: 0 1 220px; min-width: 120px; height: 28px; padding: 0 2px 0 8px;
+  border: 1px solid var(--border); border-radius: 6px; color: var(--text-3);
+}
+.cv-search:focus-within { border-color: var(--accent); color: var(--text-2); }
+.cv-search > .ic { width: 14px; height: 14px; flex: none; }
+.cv-search input { flex: 1; min-width: 0; height: 100%; border: none; background: none; outline: none; color: var(--text); font-size: 12.5px; }
+.cv-search input::-webkit-search-cancel-button { display: none; }
+.cv-search .cv-btn { width: 22px; height: 22px; }
+.cvs-node.cvs-miss { opacity: .25; }
 
 /* focus mode: a view takes the whole window, the tab bar included (see setFocused in views.js). The
    scrollers of the pages and dashboards stop being containers while one does, or it would stay
