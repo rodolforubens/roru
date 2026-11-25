@@ -2,7 +2,7 @@
 // Each language is a small rule set (comments, strings, keywords...). The tokenizer
 // carries state between lines, so block comments and multi-line strings stay
 // colored across the lines of a hunk.
-import { esc } from './util.js?v=ba3a7a9';
+import { esc } from './util.js?v=bebebcf';
 
 const words = s => new Set(s.split(/\s+/).filter(Boolean));
 

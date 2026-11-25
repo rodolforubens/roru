@@ -32,11 +32,11 @@
 // A deleted note goes to the trash with what is inside it: it gets `trashed` (when), and it and the
 // notes inside it leave every list (getNote, childrenOf…) until it is restored or deleted for good
 // (see "The trash" below).
-import { desktop, invoke, convertFileSrc } from './platform.js?v=ba3a7a9';
-import { db, currentUser } from './account.js?v=ba3a7a9';
-import { createMirror, clone, reportStatus } from './mirror.js?v=ba3a7a9';
-import { Y, updateYFragment, yDocToProsemirrorJSON } from './vendor/tiptap.js?v=ba3a7a9';
-import { noteSchema, fitToSchema } from './editor.js?v=ba3a7a9';
+import { desktop, invoke, convertFileSrc } from './platform.js?v=bebebcf';
+import { db, currentUser } from './account.js?v=bebebcf';
+import { createMirror, clone, reportStatus } from './mirror.js?v=bebebcf';
+import { Y, updateYFragment, yDocToProsemirrorJSON } from './vendor/tiptap.js?v=bebebcf';
+import { noteSchema, fitToSchema } from './editor.js?v=bebebcf';
 
 const SAVE_DELAY = 300; // ms after the last edit (files on this computer)
 
@@ -1158,8 +1158,10 @@ async function cleanPending() {
     await mirror.synced;
     const ids = dropsPending();
     if (mirror.user !== user || !ids.length) return;
-    const { error } = await db.from('note_updates').delete().in('note_id', ids);
-    if (error) throw error;
+    for (let i = 0; i < ids.length; i += 100) {
+      const { error } = await db.from('note_updates').delete().in('note_id', ids.slice(i, i + 100));
+      if (error) throw error;
+    }
     await cleanFolders(ids);
     if (mirror.user === user) setDropsPending(dropsPending().filter(id => !ids.includes(id)));
   } catch (e) {

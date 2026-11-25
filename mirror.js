@@ -8,8 +8,8 @@
 // back. Changes made elsewhere come in live (Realtime) and the owner builds its objects again from
 // the rows; a change made here and not written yet wins over them. Everything is read again
 // whenever the live channel (re)connects, which brings in what was missed while offline.
-import { db } from './account.js?v=ba3a7a9';
-import { store } from './util.js?v=ba3a7a9';
+import { db } from './account.js?v=bebebcf';
+import { store } from './util.js?v=bebebcf';
 
 // ---------- how saving is going, for everything kept in the account ----------
 
@@ -37,6 +37,22 @@ export const canon = v => JSON.stringify(v ?? null, (_, x) => (x && typeof x ===
 export const clone = v => JSON.parse(JSON.stringify(v ?? {}));
 
 const check = r => { if (r.error) throw r.error; };
+
+// Every row of a table. The account returns at most 1000 rows per request (its max rows), so the
+// rows are read page by page, in the order of their ids, until a page comes back empty: a single
+// select would quietly leave out the rest (a big import has thousands of notes).
+export async function selectAll(table, columns) {
+  const out = [];
+  for (;;) {
+    const r = await db.from(table).select(columns).order('id').range(out.length, out.length + 999);
+    if (r.error) return r;
+    if (!r.data.length) return { data: out };
+    out.push(...r.data);
+  }
+}
+
+// Big writes go in parts: a request with thousands of rows (or of ids in its address) is refused.
+const parts = (list, size) => Array.from({ length: Math.ceil(list.length / size) }, (_, i) => list.slice(i * size, (i + 1) * size));
 
 // `opts`: {
 //   name: what it is (kept on this device as `${name}.${user id}`), label: what it is, in messages,
@@ -117,11 +133,11 @@ export function createMirror(opts) {
       try {
         for (const t of TABLES) {
           const up = of(t, true).map(o => o.row);
-          if (up.length) check(await db.from(t).upsert(up));
+          for (const part of parts(up, 500)) check(await db.from(t).upsert(part));
         }
         for (const t of [...TABLES].reverse()) {
           const ids = of(t, false).map(o => o.id);
-          if (ids.length) check(await db.from(t).delete().in('id', ids));
+          for (const part of parts(ids, 100)) check(await db.from(t).delete().in('id', part));
         }
       } catch (e) {
         // offline, or the account refused it: tried again a little later, or when the network is back
@@ -171,7 +187,7 @@ export function createMirror(opts) {
     const user = account;
     if (!user) return;
     status('syncing');
-    const read = await Promise.all(TABLES.map(t => db.from(t).select(opts.tables[t]))).catch(e => [{ error: e }]);
+    const read = await Promise.all(TABLES.map(t => selectAll(t, opts.tables[t]))).catch(e => [{ error: e }]);
     if (account !== user) return;
     const failed = read.find(r => r.error);
     if (failed) {
