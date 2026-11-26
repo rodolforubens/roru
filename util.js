@@ -1,4 +1,4 @@
-import { invoke } from './platform.js?v=7efb936';
+import { invoke } from './platform.js?v=6b8f39b';
 
 export function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -107,6 +107,36 @@ export function glider(get, put, ms = 180) {
     stop: halt,
     get goal() { return goal; },
   };
+}
+
+// Where the scrollers of the screens were (a note's page, a dashboard, the start page), by a key of
+// what they show, for this session: one drawn anew (its tab shown again, or the screen gone back to on
+// a phone) is put back there. What it shows can grow a moment later (a page's text, the dashboard's
+// folders), so it is put back as it grows, until it gets there, the user scrolls or 3 s passed.
+const scrolls = new Map();
+const touched = ['wheel', 'touchstart', 'pointerdown', 'keydown'];
+export function rememberScroll(el, key) {
+  if (!el) return;
+  const want = scrolls.get(key);
+  let restoring = !!want, ro = null, timer = 0;
+  el.addEventListener('scroll', () => { if (!restoring) scrolls.set(key, [el.scrollLeft, el.scrollTop]); }, { passive: true });
+  if (!want) return;
+  const stop = () => {
+    restoring = false;
+    ro?.disconnect();
+    clearTimeout(timer);
+    touched.forEach(t => el.removeEventListener(t, stop));
+  };
+  const put = () => {
+    [el.scrollLeft, el.scrollTop] = want;
+    if (Math.abs(el.scrollLeft - want[0]) < 2 && Math.abs(el.scrollTop - want[1]) < 2) stop();
+  };
+  put();
+  if (!restoring) return;
+  ro = new ResizeObserver(put);
+  for (const kid of el.children) ro.observe(kid);
+  timer = setTimeout(stop, 3000);
+  touched.forEach(t => el.addEventListener(t, stop, { passive: true }));
 }
 
 export function store(key, value) {

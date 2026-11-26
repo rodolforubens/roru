@@ -5,17 +5,17 @@
 // below as it was. Pages nest in other pages through their text (a link to the nested page, or a
 // database block); databases show in the tree as one item. Tabs and spaces belong to app.js (see
 // initNotesUi); the table, board and canvas views and the properties are in views.js (and canvas.js).
-import * as S from './notes-store.js?v=7efb936';
-import * as G from './git.js?v=7efb936';
-import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=7efb936';
-import { openImageViewer, copyImage } from './image-viewer.js?v=7efb936';
-import { pickEmoji } from './emoji.js?v=7efb936';
-import { toMarkdown } from './markdown.js?v=7efb936';
-import { sharedPath, getProject, homeOf, setHome, homeHeightOf, setHomeHeight } from './projects.js?v=7efb936';
-import { initViews, renderCollection, renderProps, repaintViews, repaintItem, valueText, createBranchFor, addView, focusedDb, VIEW_KINDS, viewName } from './views.js?v=7efb936';
-import { importNotion } from './notion-import.js?v=7efb936';
-import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative, fmtSize } from './util.js?v=7efb936';
-import { desktop, invoke, isMobile } from './platform.js?v=7efb936';
+import * as S from './notes-store.js?v=6b8f39b';
+import * as G from './git.js?v=6b8f39b';
+import { createEditor, pickImages, addImages, embedOf, imagesOf, imageMenuItems } from './editor.js?v=6b8f39b';
+import { openImageViewer, copyImage } from './image-viewer.js?v=6b8f39b';
+import { pickEmoji } from './emoji.js?v=6b8f39b';
+import { toMarkdown } from './markdown.js?v=6b8f39b';
+import { sharedPath, getProject, homeOf, setHome, homeHeightOf, setHomeHeight } from './projects.js?v=6b8f39b';
+import { initViews, renderCollection, renderProps, repaintViews, repaintItem, valueText, createBranchFor, addView, focusedDb, VIEW_KINDS, viewName } from './views.js?v=6b8f39b';
+import { importNotion } from './notion-import.js?v=6b8f39b';
+import { esc, icon, store, folderName, plural, debounce, shrinkImage, fmtRelative, fmtSize, rememberScroll } from './util.js?v=6b8f39b';
+import { desktop, invoke, isMobile } from './platform.js?v=6b8f39b';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -595,6 +595,9 @@ export function leaveNoteTab() {
 export function peekNote(id, mode = peek?.mode || 'side', { focusTitle = false } = {}) {
   if (!S.getNote(id) || host.activeNote() === id) return;
   const el = $('#peek');
+  // (shown before the page is drawn in it, so its views can be scrolled to where they were)
+  el.className = mode;
+  el.hidden = false;
   if (peek?.page.id !== id) {
     if (peek) destroyPage(peek.page);
     el.innerHTML = '<div class="peek-panel"><div class="peek-grip"></div><div class="peek-body"></div></div>';
@@ -602,8 +605,6 @@ export function peekNote(id, mode = peek?.mode || 'side', { focusTitle = false }
     bindPeek(el);
   }
   peek.mode = mode;
-  el.className = mode;
-  el.hidden = false;
   paintMeta(peek.page);
   if (focusTitle) focusPageTitle(peek.page);
 }
@@ -711,6 +712,11 @@ function mountPage(container, id, place, { view = null } = {}) {
   const el = $('.np', container);
   const page = { id, place, el, editor: null, alive: true };
   pages.add(page);
+  // (its width first: the views are scrolled to where they were as they are drawn)
+  if (place === 'peek') {
+    const w = store('peekWidth');
+    if (w) container.closest('.peek-panel').style.setProperty('--peek-w', w + 'px');
+  }
   if (db) {
     renderCollection($('.np-children', el), {
       space, parent: id, ctx: place === 'home' ? 'home' : 'page', pin: place === 'home' ? view : null,
@@ -721,10 +727,8 @@ function mountPage(container, id, place, { view = null } = {}) {
   } else if (place !== 'home') {
     renderProps($('.np-props', el), id);
   }
-  if (place === 'peek') {
-    const w = store('peekWidth');
-    if (w) container.closest('.peek-panel').style.setProperty('--peek-w', w + 'px');
-  }
+  // shown again (its tab, or gone back to on a phone after one of its items), it is where it was
+  rememberScroll($('.np-scroll', el), `page ${place} ${id}`);
 
   const title = $('.np-title', el);
   title.value = S.getNote(id)?.title || '';

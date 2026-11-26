@@ -4,13 +4,13 @@
 // anywhere, see canvas.js). Also the properties
 // block of an item's page, which shares the value editors with the table.
 // A Branch property links a note to a branch of one of the space's repositories (notes as tasks).
-import * as S from './notes-store.js?v=7efb936';
-import * as G from './git.js?v=7efb936';
-import { esc, icon, folderName, store } from './util.js?v=7efb936';
-import { desktop } from './platform.js?v=7efb936';
-import { localPath, sharedPath } from './projects.js?v=7efb936';
-import { pickEmoji } from './emoji.js?v=7efb936';
-import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=7efb936';
+import * as S from './notes-store.js?v=6b8f39b';
+import * as G from './git.js?v=6b8f39b';
+import { esc, icon, folderName, store } from './util.js?v=6b8f39b';
+import { desktop } from './platform.js?v=6b8f39b';
+import { localPath, sharedPath } from './projects.js?v=6b8f39b';
+import { pickEmoji } from './emoji.js?v=6b8f39b';
+import { mountCanvas, canvasMenuItems, canvasNew } from './canvas.js?v=6b8f39b';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -586,6 +586,8 @@ export function renderCollection(el, opts) {
     mounted.add(c);
     bindCollection(c);
     el.addEventListener('pointerdown', () => { lastView = c; }, true); // (see focusTarget)
+    // (kept as it scrolls: a view whose page goes away isn't drawn again to keep it, see scrolledTo)
+    el.addEventListener('scroll', e => { if (c.view && e.target instanceof Element) saveScroll(c, e.target); }, true);
   }
   Object.assign(c, opts);
   // in focus mode, the items open as the database says for it (Ctrl+click: a new tab, as always)
@@ -654,6 +656,19 @@ function toggleFocus(c) {
 // The parts of a collection that scroll on their own.
 const SCROLLERS = ['.cv-tabs', '.bd', '.vt-wrap'];
 
+// Where they were scrolled to, for this session, by the database, where it is shown and the view (the
+// view tabs, by the database and where): a view drawn anew is put back there, like a board's column
+// after one of its cards was opened in its place (on a phone) and the board was gone back to, or a
+// view picked again after another one.
+const scrolledTo = new Map();
+const scrollKey = (c, sel, view = c.view) => `${c.parent} ${c.ctx} ${sel === '.cv-tabs' ? '' : view} ${sel}`;
+function saveScroll(c, x = null) {
+  for (const sel of SCROLLERS) {
+    const el = x ? (x.matches(sel) ? x : null) : $(sel, c.el);
+    if (el) scrolledTo.set(scrollKey(c, sel), [el.scrollLeft, el.scrollTop]);
+  }
+}
+
 function paint(c) {
   // (and while something is dragged on a canvas)
   if (editing(c.el) || c.canvas?.busy) { c.dirty = true; return; }
@@ -668,7 +683,7 @@ function paint(c) {
   if (c.editCard && (view.type !== 'board' || !notes.some(n => n.id === c.editCard))) endEdit(c);
   // drawing again keeps where the board, the table and the view tabs were scrolled to (a card
   // dropped in a column further right would otherwise send the board back to its first column)
-  const scrolled = c.view === view.id ? SCROLLERS.map(sel => { const x = $(sel, c.el); return x && [x.scrollLeft, x.scrollTop]; }) : [];
+  if (c.view) saveScroll(c);
   // a canvas keeps the keys when it is drawn again
   const focused = !!$('.cvs', c.el)?.contains(document.activeElement);
   c.view = view.id;
@@ -714,10 +729,10 @@ function paint(c) {
   }
   // (a table, board or gallery the search left empty says so)
   if (searched(c) && items.length && !notes.length && view.type !== 'list' && view.type !== 'canvas') body.insertAdjacentHTML('afterbegin', '<div class="cv-empty">No items found</div>');
-  SCROLLERS.forEach((sel, i) => {
-    const x = scrolled[i] && $(sel, c.el);
-    if (x) [x.scrollLeft, x.scrollTop] = scrolled[i];
-  });
+  for (const sel of SCROLLERS) {
+    const x = $(sel, c.el), at = x && scrolledTo.get(scrollKey(c, sel));
+    if (at) [x.scrollLeft, x.scrollTop] = at;
+  }
   if (typing) {
     const box = $('.cv-q', c.el);
     box?.focus({ preventScroll: true });
