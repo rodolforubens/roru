@@ -1,20 +1,20 @@
-import * as G from './git.js?v=7eba438';
-import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=7eba438';
-import { renderDiff, renderSubmodule, parseSubmoduleLog, loadSizes } from './diff.js?v=7eba438';
-import { loadMedia } from './media-diff.js?v=7eba438';
-import { partialPatch } from './patch.js?v=7eba438';
-import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=7eba438';
-import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural, rememberScroll } from './util.js?v=7eba438';
-import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=7eba438';
-import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=7eba438';
-import * as P from './projects.js?v=7eba438';
-import { syncStatus, onSyncStatus } from './mirror.js?v=7eba438';
-import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=7eba438';
-import * as S from './notes-store.js?v=7eba438';
-import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=7eba438';
-import * as M from './mobile.js?v=7eba438';
-import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=7eba438';
-import { initNotesUi, mountNoteTab, leaveNoteTab, releasePages, renderHomeNote, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, databaseKinds, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=7eba438';
+import * as G from './git.js?v=1935041';
+import { computeGraph, graphSvg, LANE_W, laneColor } from './graph.js?v=1935041';
+import { renderDiff, renderSubmodule, parseSubmoduleLog, loadSizes } from './diff.js?v=1935041';
+import { loadMedia } from './media-diff.js?v=1935041';
+import { partialPatch } from './patch.js?v=1935041';
+import { parseConflicts, hasMarkers, resolvedContent, startEdit, renderResolver, renderConflictCard } from './conflict.js?v=1935041';
+import { esc, splitPath, fmtDate, fmtRelative, debounce, store, icon, fileIcon, pathTree, renderTree, treeCompare, normPath, folderName, plural, rememberScroll } from './util.js?v=1935041';
+import { initZoom, onZoom, getZoom, resetZoom } from './zoom.js?v=1935041';
+import { initExplorer, renderExplorer, restoreExplorer, captureExplorer, forgetExplorer, explorerFolder, focusExplorerSearch, revealPath } from './explorer.js?v=1935041';
+import * as P from './projects.js?v=1935041';
+import { syncStatus, onSyncStatus } from './mirror.js?v=1935041';
+import { initDashboard, renderDashboard, updateDashboard, reloadDashboard, addMenuItems } from './dashboard.js?v=1935041';
+import * as S from './notes-store.js?v=1935041';
+import { desktop, invoke, isMobile, onMobileChange } from './platform.js?v=1935041';
+import * as M from './mobile.js?v=1935041';
+import { configured, initAccount, onAccount, currentUser, signIn, signOut, signInFailure, userName, userAvatar } from './account.js?v=1935041';
+import { initNotesUi, mountNoteTab, leaveNoteTab, releasePages, renderHomeNote, renderNoteTree, renderNotesPanel, openNote, newNote, newDatabase, databaseKinds, closePeek, noteTitle, noteIcon, noteMenuItems } from './notes.js?v=1935041';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const tauri = window.__TAURI__;
@@ -849,7 +849,7 @@ function tabLabel(path) {
 function renderTabs() {
   const project = P.getProject(tabs.space), active = activeKey();
   const home = `<div class="tab home ${active ? '' : 'active'}" title="${project ? `Home of ${esc(project.name)}` : 'Start page'}">
-      ${icon(project ? 'grid' : 'home')}<span class="tab-label">Home</span></div>`;
+      ${icon('home')}<span class="tab-label">Home</span></div>`;
   const tab = (key, ic, label, title) => `
     <div class="tab ${key === active ? 'active' : ''}" data-tab="${esc(key)}" title="${esc(title)}" draggable="true">
       ${icon(ic)}<span class="tab-label">${esc(label)}</span>
@@ -1482,7 +1482,7 @@ function renderToolbar() {
   const s = state.status, project = currentProject();
   const note = state.note && S.getNote(state.note);
   const name = state.repo ? folderName(state.repo) : note ? noteTitle(state.note) : project ? project.name : 'Home';
-  $('.repo-glyph').innerHTML = icon(state.repo ? 'folder' : note ? noteIcon(state.note) : project ? 'grid' : 'home');
+  $('.repo-glyph').innerHTML = icon(state.repo ? 'folder' : note ? noteIcon(state.note) : 'home');
   $('#repo-name').textContent = name;
   $('#repo-branch').textContent = state.plain ? 'Folder — not a Git repository' : note ? (note.kind === 'database' ? 'Database' : 'Page')
     : !state.repo ? (project ? 'Project dashboard' : '') : !s ? '' : s.detached ? 'Detached HEAD' : s.branch || '';
